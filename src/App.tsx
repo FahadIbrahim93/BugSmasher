@@ -48,11 +48,11 @@ export default function App() {
             // Update guest session stats (in-memory only)
             const kills = getPlayerState()?.kills || 0;
             updateSessionStats(finalScore, finalWave, kills);
-          } else if (user) {
+          } else if (user && userData) {
             // Save high score to database
-            if (finalScore > (userData?.highScore || 0)) {
+            if (finalScore > (userData.highScore || 0)) {
               userData.highScore = finalScore;
-              userData.maxWave = Math.max(userData?.maxWave || 0, finalWave);
+              userData.maxWave = Math.max(userData.maxWave || 0, finalWave);
               await saveUserData(user.uid, userData);
             }
           }

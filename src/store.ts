@@ -59,7 +59,7 @@ export async function loadUserData(uid: string) {
 /**
  * Save user data to database
  */
-export async function saveUserData(uid: string, stats?: Partial<PlayerStats>) {
+export async function saveUserData(uid: string, stats?: Partial<PlayerStats> | PlayerStats) {
   try {
     const user = auth.currentUser;
     if (!user || user.uid !== uid) {
@@ -67,12 +67,14 @@ export async function saveUserData(uid: string, stats?: Partial<PlayerStats>) {
       return;
     }
 
-    const mergedStats = { ...userData, ...stats };
-    await dbService.savePlayerStats(user, mergedStats);
-    
-    if (userData) {
-      userData = { ...userData, ...mergedStats };
+    if (!userData) {
+      console.warn('[v0] No user data to save');
+      return;
     }
+
+    const mergedStats = { ...userData, ...(stats || {}) } as PlayerStats;
+    await dbService.savePlayerStats(user, mergedStats);
+    userData = mergedStats;
     
     console.log('[v0] User data saved successfully');
   } catch (error) {
