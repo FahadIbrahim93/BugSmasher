@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { initGame, startGame, getPlayerState, resumeGame, setAutoAttack as setEngineAutoAttack } from './game/engine';
-import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from './firebase';
+import { auth, onAuthStateChanged, signOut } from './firebase';
 import { loadUserData, saveUserData, userData } from './store';
 import { HERO_CLASSES, player } from './game/player';
 import { UPGRADE_DEFS } from './game/upgrades';
+import { AuthPanel } from './components/AuthPanel';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -114,22 +115,6 @@ export default function App() {
     }
     return () => cancelAnimationFrame(animationFrameId);
   }, [gameState]);
-
-  const handleLogin = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      console.error('Login failed', error);
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error('Logout failed', error);
-    }
-  };
 
   const handleStartGame = () => {
     setGameState('playing');
@@ -342,25 +327,36 @@ export default function App() {
         <div className="title-text" aria-label="Insectiles">INSECTILES</div>
         <div className="title-sub">Survive the Swarm</div>
         
-        <div id="auth-section" style={{ marginTop: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 2 }}>
-          {!user ? (
-            <button className="start-btn" id="login-btn" aria-label="Login with Google" style={{ marginTop: 0 }} onClick={handleLogin}>
-              LOGIN WITH GOOGLE
-            </button>
-          ) : (
-            <div id="user-info" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-              <div style={{ color: 'rgba(0,255,100,0.8)', fontFamily: "'Orbitron', monospace", fontSize: '14px', letterSpacing: '2px' }} id="welcome-msg">
-                WELCOME, {user.displayName?.toUpperCase()}
-              </div>
-              <button className="start-btn" id="start-btn" aria-label="Start game and choose class" style={{ marginTop: '10px' }} onClick={() => setGameState('classselect')}>
-                ENGAGE
-              </button>
-              <button id="logout-btn" style={{ background: 'transparent', border: 'none', color: 'rgba(255,100,100,0.8)', fontFamily: "'Orbitron', monospace", fontSize: '10px', cursor: 'pointer', letterSpacing: '2px', textDecoration: 'underline', marginTop: '10px' }} onClick={handleLogout}>
-                LOGOUT
-              </button>
+        {user ? (
+          <div id="user-info" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', marginTop: '40px', zIndex: 2 }}>
+            {user.photoURL && (
+              <img 
+                src={user.photoURL} 
+                alt={user.displayName || 'User'} 
+                style={{ width: '60px', height: '60px', borderRadius: '50%', border: '2px solid rgba(0,255,100,0.5)' }}
+              />
+            )}
+            <div style={{ color: 'rgba(0,255,100,0.8)', fontFamily: "'Orbitron', monospace", fontSize: '14px', letterSpacing: '2px' }} id="welcome-msg">
+              WELCOME, {(user.displayName || user.email)?.toUpperCase()}
             </div>
-          )}
-        </div>
+            <button className="start-btn" id="start-btn" aria-label="Start game and choose class" style={{ marginTop: '10px' }} onClick={() => setGameState('classselect')}>
+              ENGAGE
+            </button>
+            <button id="logout-btn" style={{ background: 'transparent', border: 'none', color: 'rgba(255,100,100,0.8)', fontFamily: "'Orbitron', monospace", fontSize: '10px', cursor: 'pointer', letterSpacing: '2px', textDecoration: 'underline', marginTop: '10px' }} onClick={() => signOut()}>
+              LOGOUT
+            </button>
+          </div>
+        ) : (
+          <AuthPanel user={user} onAuthChange={() => {
+            // Force re-render and reload user data
+            onAuthStateChanged(auth, async (currentUser) => {
+              setUser(currentUser);
+              if (currentUser) {
+                await loadUserData(currentUser.uid);
+              }
+            });
+          }} />
+        )}
 
         <div className="version-tag" aria-label="Version info">APEX SWARM EDITION v5.0 — PRODUCTION BUILD</div>
       </div>
