@@ -4,9 +4,10 @@ import { signInWithProvider, signOut, googleProvider, githubProvider, discordPro
 interface AuthPanelProps {
   user: User | null;
   onAuthChange?: () => void;
+  onPlayAsGuest?: () => void;
 }
 
-export function AuthPanel({ user, onAuthChange }: AuthPanelProps) {
+export function AuthPanel({ user, onAuthChange, onPlayAsGuest }: AuthPanelProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,6 +44,10 @@ export function AuthPanel({ user, onAuthChange }: AuthPanelProps) {
     }
   };
 
+  const handlePlayAsGuest = () => {
+    onPlayAsGuest?.();
+  };
+
   return (
     <div id="auth-section" style={{ marginTop: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 2 }}>
       {!user ? (
@@ -77,6 +82,19 @@ export function AuthPanel({ user, onAuthChange }: AuthPanelProps) {
           >
             {loading ? 'CONNECTING...' : 'DISCORD LOGIN'}
           </button>
+          <div style={{ width: '100%', height: '1px', background: 'rgba(100, 200, 255, 0.2)', margin: '12px 0' }} />
+          <button 
+            className="start-btn" 
+            id="guest-play-btn" 
+            onClick={handlePlayAsGuest}
+            disabled={loading}
+            style={{ width: '100%', background: 'rgba(150, 150, 150, 0.6)', marginTop: 0, fontSize: '12px' }}
+          >
+            {loading ? 'LOADING...' : 'PLAY AS GUEST'}
+          </button>
+          <div style={{ fontSize: '10px', color: 'rgba(150, 150, 150, 0.6)', fontFamily: "'Orbitron', monospace", marginTop: '8px', textAlign: 'center' }}>
+            (No account or data saved)
+          </div>
           {error && (
             <div style={{ color: 'rgba(255, 100, 100, 0.8)', fontSize: '12px', marginTop: '10px', textAlign: 'center' }}>
               {error}

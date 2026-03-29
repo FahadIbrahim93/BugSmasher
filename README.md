@@ -18,13 +18,14 @@ An advanced, production-ready tower-defense/survivor game with enterprise-grade 
 
 ### Enterprise Features
 - **Multi-Provider Authentication**: Google, GitHub, and Discord OAuth integration
+- **Guest Mode**: Play without authentication with in-session statistics tracking
 - **Robust Database Backend**: Firebase with secure RLS policies
 - **Achievement System**: 15+ unlockable achievements with rarity tiers
 - **Leaderboards**: Multiple ranking systems (High Score, Max Wave, Total Kills, Playtime, Achievements)
 - **Advanced Statistics**: Comprehensive game metrics tracking
 - **Performance Monitoring**: FPS tracking and optimization suggestions
 - **Analytics & Telemetry**: Event-based analytics for user engagement and gameplay metrics
-- **Persistent User Data**: All progress saved to Firebase
+- **Persistent User Data**: All authenticated player progress saved to Firebase
 
 ## Architecture
 
@@ -45,7 +46,8 @@ src/
 │   ├── database.ts         # Firebase database operations
 │   ├── leaderboard.ts      # Leaderboard management
 │   ├── performance.ts      # Performance monitoring
-│   └── analytics.ts        # Analytics and telemetry
+│   ├── analytics.ts        # Analytics and telemetry
+│   └── guest.ts            # Guest mode management
 ├── components/
 │   ├── AuthPanel.tsx       # Multi-provider authentication UI
 │   └── Leaderboard.tsx     # Leaderboard display component
@@ -140,6 +142,37 @@ analyticsService.trackGameEnd(score, wave, kills, duration, survived);
 
 // Track achievement
 analyticsService.trackAchievementUnlocked(achievementId, achievementName);
+```
+
+### Guest Mode Service
+```typescript
+import { 
+  createGuestSession, 
+  isGuestMode, 
+  endGuestSession,
+  getGuestDisplayName,
+  updateSessionStats,
+  getGuestStats 
+} from './services/guest';
+
+// Create a guest session
+const session = createGuestSession();
+// Returns: GuestSession with sessionId, startTime, displayName
+
+// Check if in guest mode
+if (isGuestMode()) {
+  console.log('Playing as guest');
+}
+
+// Update session stats during gameplay
+updateSessionStats(currentScore, currentWave, killCount);
+
+// Get guest stats
+const stats = getGuestStats();
+// Returns: { highScore, maxWave, totalKills, sessionScore, sessionWave, sessionKills, playTime, displayName }
+
+// End guest session and return to login
+endGuestSession();
 ```
 
 ### Achievement Manager
