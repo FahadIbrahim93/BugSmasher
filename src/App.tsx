@@ -2,14 +2,16 @@ import { useState, useEffect, useRef } from 'react';
 import { initGame, startGame, getPlayerState, resumeGame, setAutoAttack as setEngineAutoAttack } from './game/engine';
 import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from './firebase';
 import { loadUserData, saveUserData, userData } from './store';
-import { HERO_CLASSES, player } from './game/player';
+import { HERO_CLASSES } from './game/player';
 import { UPGRADE_DEFS } from './game/upgrades';
+import { applyUpgrade, pickUpgradeOptions } from './game/progression';
+import type { AbilityState, GameState, UpgradeDef } from './types';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const minimapRef = useRef<HTMLCanvasElement>(null);
-  const [user, setUser] = useState<any>(null);
-  const [gameState, setGameState] = useState('loading'); // loading, title, classselect, playing, gameover, upgrading
+  const [user, setUser] = useState<{ uid: string; displayName?: string | null } | null>(null);
+  const [gameState, setGameState] = useState<GameState>('loading'); // loading, title, classselect, playing, gameover, upgrading
   const [selectedClass, setSelectedClass] = useState(HERO_CLASSES[0]);
   const [score, setScore] = useState(0);
   const [wave, setWave] = useState(1);
@@ -19,7 +21,7 @@ export default function App() {
   const [maxXp, setMaxXp] = useState(100);
   const [level, setLevel] = useState(1);
   const [upgradePoints, setUpgradePoints] = useState(0);
-  const [availableUpgrades, setAvailableUpgrades] = useState<any[]>([]);
+  const [availableUpgrades, setAvailableUpgrades] = useState<UpgradeDef[]>([]);
   
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -43,10 +45,10 @@ export default function App() {
           
           if (user) {
             // Save high score
-            if (finalScore > (userData.highScore || 0)) {
-              userData.highScore = finalScore;
-              userData.maxWave = Math.max(userData.maxWave || 0, finalWave);
-              await saveUserData(user.uid, userData);
+            if (finalScore > (userData.bestScore || 0)) {
+              userData.bestScore = finalScore;
+              userData.bestWave = Math.max(userData.bestWave || 0, finalWave);
+              await saveUserData(user.uid);
             }
           }
         },
@@ -91,7 +93,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const [abilities, setAbilities] = useState<any[]>([]);
+  const [abilities, setAbilities] = useState<AbilityState[]>([]);
 
   // Update HUD
   useEffect(() => {
@@ -137,32 +139,12 @@ export default function App() {
   };
 
   const rollUpgrades = () => {
-    // Simple random selection for now
-    const shuffled = [...UPGRADE_DEFS].sort(() => 0.5 - Math.random());
-    setAvailableUpgrades(shuffled.slice(0, 3));
+    setAvailableUpgrades(pickUpgradeOptions(UPGRADE_DEFS));
   };
 
-  const handleSelectUpgrade = (upgrade: any) => {
-    // Apply upgrade logic
-    console.log("Selected upgrade:", upgrade.name);
-    
-    // Apply upgrade logic here
-    if (upgrade.id.startsWith('dmg_')) {
-      player.attackDamage += upgrade.value;
-    } else if (upgrade.id.startsWith('spd_')) {
-      player.speed += upgrade.value;
-    } else if (upgrade.id.startsWith('hp_')) {
-      player.maxHp += upgrade.value;
-      player.hp += upgrade.value;
-    } else if (upgrade.id.startsWith('rate_')) {
-      player.attackRate *= (1 - upgrade.value);
-    } else if (upgrade.id.startsWith('range_')) {
-      player.attackRange += upgrade.value;
-    } else if (upgrade.id.startsWith('heal_')) {
-      player.hp = Math.min(player.maxHp, player.hp + upgrade.value);
-    }
-    
-    // Resume game
+  const handleSelectUpgrade = (upgrade: UpgradeDef) => {
+    applyUpgrade(upgrade);
+
     setGameState('playing');
     resumeGame();
   };
@@ -405,7 +387,7 @@ export default function App() {
           <div>WAVES SURVIVED: <span id="go-wave" style={{ color: 'var(--c-accent)' }}>{wave}</span></div>
           {user && userData && (
             <div style={{ marginTop: '10px', fontSize: '14px', color: '#888' }}>
-              HIGH SCORE: {userData.highScore || 0}
+              HIGH SCORE: {userData.bestScore || 0}
             </div>
           )}
         </div>

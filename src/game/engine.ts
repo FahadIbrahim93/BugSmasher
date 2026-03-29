@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
-import { Log, initAudio, playTone, sfxAttack, sfxKill, sfxHit, sfxAbility } from './audio';
-import { player, HERO_CLASSES } from './player';
+import { initAudio, playTone, sfxAttack, sfxKill, sfxHit, sfxAbility } from './audio';
+import { player } from './player';
 import { enemies, ENEMY_TYPES, setEnemies } from './enemies';
+import type { HeroClass } from '../types';
 import { particles, spawnParticles } from './particles';
 import { InsectRenderer } from './renderer';
 import { UPGRADE_DEFS, RARITY, SYNERGY_DEFS } from './upgrades';
@@ -18,9 +18,13 @@ let ctx: CanvasRenderingContext2D | null = null;
 let minimapCtx: CanvasRenderingContext2D | null = null;
 let canvasWidth = 0;
 let canvasHeight = 0;
-let projectiles: any[] = [];
-let gems: any[] = [];
-let damageNumbers: any[] = [];
+type Projectile = { x: number; y: number; angle: number; speed: number; damage: number; life: number; size: number; color: string; pierce: boolean; isEnemy?: boolean };
+type Gem = { x: number; y: number; xp: number; color: string };
+type DamageNumber = { x: number; y: number; val: number; life: number };
+
+let projectiles: Projectile[] = [];
+let gems: Gem[] = [];
+let damageNumbers: DamageNumber[] = [];
 
 // Input State
 const keys: { [key: string]: boolean } = {};
@@ -85,7 +89,7 @@ export function initGame(
   requestAnimationFrame(gameLoop);
 }
 
-export function startGame(heroClass: any) {
+export function startGame(heroClass: HeroClass) {
   isPlaying = true;
   gameTime = 0;
   score = 0;
@@ -112,6 +116,8 @@ export function startGame(heroClass: any) {
   player.maxXp = 100;
   player.level = 1;
   player.attackCooldown = 0;
+  player.upgradePoints = 0;
+  player.upgrades = {};
   
   initAudio();
 }
@@ -329,9 +335,9 @@ function update(dt: number) {
       enemies.push({
         x: player.x + Math.cos(spawnAngle) * spawnDist,
         y: player.y + Math.sin(spawnAngle) * spawnDist,
-        hp: ENEMY_TYPES.mantis.health * (1 + wave * 0.5),
-        maxHp: ENEMY_TYPES.mantis.health * (1 + wave * 0.5),
-        type: ENEMY_TYPES.mantis,
+        hp: ENEMY_TYPES.hiveMother.health * (1 + wave * 0.5),
+        maxHp: ENEMY_TYPES.hiveMother.health * (1 + wave * 0.5),
+        type: ENEMY_TYPES.hiveMother,
         vx: 0,
         vy: 0,
         animPhase: Math.random() * TAU,
@@ -350,7 +356,7 @@ function update(dt: number) {
 
     e.stateTimer -= dt;
 
-    if (e.type.id === 'hornet') {
+    if (e.type.aiType === 'ranged') {
       if (d > 300) {
         e.x += Math.cos(a) * e.type.speed * dt;
         e.y += Math.sin(a) * e.type.speed * dt;

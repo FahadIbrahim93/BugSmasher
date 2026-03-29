@@ -1,4 +1,6 @@
-export const ENEMY_TYPES: Record<string, any> = {
+import type { Enemy, EnemyType } from '../types';
+
+export const ENEMY_TYPES: Record<string, EnemyType> = {
   beetle: { health: 50, speed: 80, size: 14, damage: 10, score: 10, rendType: 'basic', aiType: 'chase', color: '#2a5c2a', gemColor: '#00ff88' },
   soldier: { health: 100, speed: 60, size: 20, damage: 20, score: 25, rendType: 'soldier', aiType: 'chase', color: '#5c2a2a', gemColor: '#ff6644' },
   wasp: { health: 30, speed: 160, size: 12, damage: 15, score: 20, rendType: 'wasp', aiType: 'chase', color: '#8c7a1a', gemColor: '#ffdd00' },
@@ -14,8 +16,8 @@ export const ENEMY_TYPES: Record<string, any> = {
   voidQueen: { health: 1600, speed: 60, size: 50, damage: 55, score: 1200, rendType: 'queen', aiType: 'boss', color: '#1a004a', gemColor: '#aa44ff', bossPhases: 3 },
 };
 
-export let enemies: any[] = [];
+export let enemies: Enemy[] = [];
 
-export function setEnemies(newEnemies: any[]) {
+export function setEnemies(newEnemies: Enemy[]): void {
   enemies = newEnemies;
 }
