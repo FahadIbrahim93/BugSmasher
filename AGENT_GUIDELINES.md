@@ -1,24 +1,24 @@
 # Agent Guidelines
 
 ## Product Goals
-- Prioritize responsive gameplay and deterministic combat progression.
-- Maintain cloud-save stability and backward-compatible user data.
-- Treat lint/build/test as release gates.
+- Preserve responsive gameplay loop latency and deterministic progression outcomes.
+- Keep cloud persistence backward-compatible and privacy-conscious.
+- Treat lint, tests, and production build as mandatory release gates.
 
 ## Coding Standards
-- Keep UI logic in React components; move game rules into domain modules.
-- Prefer typed interfaces over anonymous object shapes.
-- Ensure upgrade logic is centralized and test-covered.
-- Avoid dead code and unused imports in runtime files.
+- Gameplay/business rules belong in `src/game/*` domain modules, not React UI glue.
+- Prefer explicit interfaces over broad `any` objects at module boundaries.
+- Guard stat math with floors/caps where runaway values can break balancing.
+- Remove dead/diagnostic logs from production paths unless they are structured and intentional.
 
-## Testing Policy
-- Required checks before merge:
+## Testing Standards
+- Minimum gate checks:
   1. `npm run lint`
   2. `npm run test`
   3. `npm run build`
-- Tests must validate both happy-path and failure/edge constraints.
+- Add edge/failure test cases whenever stateful gameplay logic changes.
 
-## Communication Protocol
-- Use task IDs from `TASKBOARD.md` in implementation notes.
-- Document blockers with direct command output.
-- If a check is skipped due environment constraints, record exact reason.
+## Communication & Handoff
+- Track work through `TASKBOARD.md` task IDs.
+- Record blockers with exact command output snippets.
+- Keep commit scope atomic and auditable.

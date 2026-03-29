@@ -1,3 +1,5 @@
+import type { AbilityState, HeroClass } from '../types';
+
 import { WORLD_SIZE } from './utils';
 
 export const player = {
@@ -9,7 +11,7 @@ export const player = {
   hp: 100, maxHp: 100,
   health: 100, maxHealth: 100, baseMaxHealth: 100,
   xp: 0, maxXp: 100, level: 1,
-  heroClass: null as any,
+  heroClass: null as HeroClass | null,
   angle: 0,
   animPhase: 0,
   state: 'idle',
@@ -29,7 +31,7 @@ export const player = {
     { name: 'Lightning Sting', cooldown: 0, maxCooldown: 8, baseCooldown: 8, active: false, duration: 0 },
     { name: 'Chitin Shield', cooldown: 0, maxCooldown: 12, baseCooldown: 12, active: false, duration: 0 },
     { name: 'Death Swarm', cooldown: 0, maxCooldown: 20, baseCooldown: 20, active: false, duration: 0 }
-  ],
+  ] as AbilityState[],
   shieldActive: false,
   shieldTimer: 0,
   xpGlow: 0,
@@ -44,7 +46,7 @@ export const player = {
   shieldBonusDuration: 0,
 };
 
-export const HERO_CLASSES = [
+export const HERO_CLASSES: HeroClass[] = [
   {
     id: 'mantis',
     emoji: '🦗',

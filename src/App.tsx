@@ -143,7 +143,6 @@ export default function App() {
   };
 
   const handleSelectUpgrade = (upgrade: UpgradeDef) => {
-    console.log('Selected upgrade:', upgrade.name);
     applyUpgrade(upgrade);
 
     setGameState('playing');
