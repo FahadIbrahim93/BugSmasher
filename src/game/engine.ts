@@ -296,11 +296,13 @@ function update(dt: number) {
     const spawnAngle = Math.random() * TAU;
     const spawnDist = Math.max(canvasWidth, canvasHeight) / 2 + 100;
     
-    // Choose enemy type based on wave
+    // Choose enemy type based on wave (scaled difficulty)
     let type = ENEMY_TYPES.beetle;
-    if (wave > 2 && Math.random() < 0.3) type = ENEMY_TYPES.hornet;
-    if (wave > 4 && Math.random() < 0.2) type = ENEMY_TYPES.spider;
-    if (wave > 6 && Math.random() < 0.1) type = ENEMY_TYPES.centipede;
+    if (wave > 2 && Math.random() < 0.3) type = ENEMY_TYPES.wasp;
+    if (wave > 4 && Math.random() < 0.2) type = ENEMY_TYPES.moth;
+    if (wave > 6 && Math.random() < 0.15) type = ENEMY_TYPES.soldier;
+    if (wave > 8 && Math.random() < 0.15) type = ENEMY_TYPES.spitter;
+    if (wave > 10 && Math.random() < 0.1) type = ENEMY_TYPES.tank;
     
     enemies.push({
       x: player.x + Math.cos(spawnAngle) * spawnDist,
@@ -326,12 +328,13 @@ function update(dt: number) {
     if (wave % 5 === 0) {
       const spawnAngle = Math.random() * TAU;
       const spawnDist = Math.max(canvasWidth, canvasHeight) / 2 + 100;
+      const bossType = wave % 10 === 0 ? ENEMY_TYPES.voidQueen : ENEMY_TYPES.hiveMother;
       enemies.push({
         x: player.x + Math.cos(spawnAngle) * spawnDist,
         y: player.y + Math.sin(spawnAngle) * spawnDist,
-        hp: ENEMY_TYPES.mantis.health * (1 + wave * 0.5),
-        maxHp: ENEMY_TYPES.mantis.health * (1 + wave * 0.5),
-        type: ENEMY_TYPES.mantis,
+        hp: bossType.health * (1 + wave * 0.5),
+        maxHp: bossType.health * (1 + wave * 0.5),
+        type: bossType,
         vx: 0,
         vy: 0,
         animPhase: Math.random() * TAU,

@@ -436,7 +436,7 @@ export default function App() {
       <canvas id="game-canvas" ref={canvasRef} role="img" aria-label="Game world" style={{ display: gameState === 'playing' || gameState === 'gameover' || gameState === 'upgrading' ? 'block' : 'none' }}></canvas>
 
       {/* HUD */}
-      <div id="hud" className={gameState === 'playing' ? 'show' : ''} role="region" aria-label="Game HUD" aria-live="polite">
+      <div id="hud" className={gameState === 'playing' ? 'active' : ''} role="region" aria-label="Game HUD" aria-live="polite">
         <div className="hud-left">
           <div className="hud-label" id="vitality-label">VITALITY</div>
           <div className="health-bar-container" role="progressbar" aria-labelledby="vitality-label" aria-valuemin={0} aria-valuemax={100} aria-valuenow={(hp / maxHp) * 100}>
@@ -458,7 +458,7 @@ export default function App() {
       </div>
 
       {/* ABILITY BAR */}
-      <div className={`ability-bar ${gameState === 'playing' ? 'show' : ''}`} id="ability-bar" role="toolbar" aria-label="Abilities">
+      <div className={`ability-bar ${gameState === 'playing' ? 'active' : ''}`} id="ability-bar" role="toolbar" aria-label="Abilities">
         {abilities.map((ab, idx) => {
           const keys = ['Q', 'W', 'E', 'R'];
           const icons = ['🔥', '⚡', '🛡️', '💀'];
