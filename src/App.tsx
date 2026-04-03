@@ -1,14 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { initGame, startGame, getPlayerState, resumeGame, setAutoAttack as setEngineAutoAttack } from './game/engine';
-import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from './firebase';
+import { auth, onAuthStateChanged, signOut } from './firebase';
 import { loadUserData, saveUserData, userData } from './store';
 import { HERO_CLASSES, player } from './game/player';
 import { UPGRADE_DEFS } from './game/upgrades';
+import { AuthPanel } from './components/AuthPanel';
+import { createGuestSession, isGuestMode, endGuestSession, getGuestDisplayName, updateSessionStats, guestGameStats } from './services/guest';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const minimapRef = useRef<HTMLCanvasElement>(null);
   const [user, setUser] = useState<any>(null);
+  const [isGuest, setIsGuest] = useState(false);
   const [gameState, setGameState] = useState('loading'); // loading, title, classselect, playing, gameover, upgrading
   const [selectedClass, setSelectedClass] = useState(HERO_CLASSES[0]);
   const [score, setScore] = useState(0);
@@ -41,8 +44,12 @@ export default function App() {
           setWave(finalWave);
           setGameState('gameover');
           
-          if (user) {
-            // Save high score
+          if (isGuest) {
+            // Update guest session stats (in-memory only)
+            const kills = getPlayerState()?.kills || 0;
+            updateSessionStats(finalScore, finalWave, kills);
+          } else if (user && userData) {
+            // Save high score to database
             if (finalScore > (userData.highScore || 0)) {
               userData.highScore = finalScore;
               userData.maxWave = Math.max(userData.maxWave || 0, finalWave);
@@ -114,22 +121,6 @@ export default function App() {
     }
     return () => cancelAnimationFrame(animationFrameId);
   }, [gameState]);
-
-  const handleLogin = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      console.error('Login failed', error);
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error('Logout failed', error);
-    }
-  };
 
   const handleStartGame = () => {
     setGameState('playing');
@@ -342,25 +333,47 @@ export default function App() {
         <div className="title-text" aria-label="Insectiles">INSECTILES</div>
         <div className="title-sub">Survive the Swarm</div>
         
-        <div id="auth-section" style={{ marginTop: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 2 }}>
-          {!user ? (
-            <button className="start-btn" id="login-btn" aria-label="Login with Google" style={{ marginTop: 0 }} onClick={handleLogin}>
-              LOGIN WITH GOOGLE
-            </button>
-          ) : (
-            <div id="user-info" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-              <div style={{ color: 'rgba(0,255,100,0.8)', fontFamily: "'Orbitron', monospace", fontSize: '14px', letterSpacing: '2px' }} id="welcome-msg">
-                WELCOME, {user.displayName?.toUpperCase()}
-              </div>
-              <button className="start-btn" id="start-btn" aria-label="Start game and choose class" style={{ marginTop: '10px' }} onClick={() => setGameState('classselect')}>
-                ENGAGE
-              </button>
-              <button id="logout-btn" style={{ background: 'transparent', border: 'none', color: 'rgba(255,100,100,0.8)', fontFamily: "'Orbitron', monospace", fontSize: '10px', cursor: 'pointer', letterSpacing: '2px', textDecoration: 'underline', marginTop: '10px' }} onClick={handleLogout}>
-                LOGOUT
-              </button>
+        {user || isGuest ? (
+          <div id="user-info" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', marginTop: '40px', zIndex: 2 }}>
+            {user?.photoURL && (
+              <img 
+                src={user.photoURL} 
+                alt={user.displayName || 'User'} 
+                style={{ width: '60px', height: '60px', borderRadius: '50%', border: '2px solid rgba(0,255,100,0.5)' }}
+              />
+            )}
+            <div style={{ color: 'rgba(0,255,100,0.8)', fontFamily: "'Orbitron', monospace", fontSize: '14px', letterSpacing: '2px' }} id="welcome-msg">
+              WELCOME, {isGuest ? getGuestDisplayName().toUpperCase() : (user?.displayName || user?.email)?.toUpperCase()}
+              {isGuest && <div style={{ fontSize: '10px', color: 'rgba(150, 150, 150, 0.6)', marginTop: '4px' }}>(GUEST MODE)</div>}
             </div>
-          )}
-        </div>
+            <button className="start-btn" id="start-btn" aria-label="Start game and choose class" style={{ marginTop: '10px' }} onClick={() => setGameState('classselect')}>
+              ENGAGE
+            </button>
+            <button id="logout-btn" style={{ background: 'transparent', border: 'none', color: 'rgba(255,100,100,0.8)', fontFamily: "'Orbitron', monospace", fontSize: '10px', cursor: 'pointer', letterSpacing: '2px', textDecoration: 'underline', marginTop: '10px' }} onClick={() => {
+              if (isGuest) {
+                endGuestSession();
+                setIsGuest(false);
+              } else {
+                signOut();
+              }
+            }}>
+              {isGuest ? 'EXIT GUEST MODE' : 'LOGOUT'}
+            </button>
+          </div>
+        ) : (
+          <AuthPanel user={user} onAuthChange={() => {
+            // Force re-render and reload user data
+            onAuthStateChanged(auth, async (currentUser) => {
+              setUser(currentUser);
+              if (currentUser) {
+                await loadUserData(currentUser.uid);
+              }
+            });
+          }} onPlayAsGuest={() => {
+            createGuestSession();
+            setIsGuest(true);
+          }} />
+        )}
 
         <div className="version-tag" aria-label="Version info">APEX SWARM EDITION v5.0 — PRODUCTION BUILD</div>
       </div>
@@ -403,7 +416,14 @@ export default function App() {
         <div className="go-stats">
           <div>FINAL SCORE: <span id="go-score" style={{ color: 'var(--c-accent)' }}>{score}</span></div>
           <div>WAVES SURVIVED: <span id="go-wave" style={{ color: 'var(--c-accent)' }}>{wave}</span></div>
-          {user && userData && (
+          {isGuest ? (
+            <div style={{ marginTop: '10px', fontSize: '14px', color: '#888' }}>
+              SESSION HIGH SCORE: {guestGameStats.highScore} | MAX WAVE: {guestGameStats.maxWave}
+              <div style={{ fontSize: '12px', marginTop: '8px', color: 'rgba(100, 200, 255, 0.6)' }}>
+                (Guest mode - progress not saved)
+              </div>
+            </div>
+          ) : user && userData && (
             <div style={{ marginTop: '10px', fontSize: '14px', color: '#888' }}>
               HIGH SCORE: {userData.highScore || 0}
             </div>
@@ -416,7 +436,7 @@ export default function App() {
       <canvas id="game-canvas" ref={canvasRef} role="img" aria-label="Game world" style={{ display: gameState === 'playing' || gameState === 'gameover' || gameState === 'upgrading' ? 'block' : 'none' }}></canvas>
 
       {/* HUD */}
-      <div id="hud" className={gameState === 'playing' ? 'show' : ''} role="region" aria-label="Game HUD" aria-live="polite">
+      <div id="hud" className={gameState === 'playing' ? 'active' : ''} role="region" aria-label="Game HUD" aria-live="polite">
         <div className="hud-left">
           <div className="hud-label" id="vitality-label">VITALITY</div>
           <div className="health-bar-container" role="progressbar" aria-labelledby="vitality-label" aria-valuemin={0} aria-valuemax={100} aria-valuenow={(hp / maxHp) * 100}>
@@ -438,7 +458,7 @@ export default function App() {
       </div>
 
       {/* ABILITY BAR */}
-      <div className={`ability-bar ${gameState === 'playing' ? 'show' : ''}`} id="ability-bar" role="toolbar" aria-label="Abilities">
+      <div className={`ability-bar ${gameState === 'playing' ? 'active' : ''}`} id="ability-bar" role="toolbar" aria-label="Abilities">
         {abilities.map((ab, idx) => {
           const keys = ['Q', 'W', 'E', 'R'];
           const icons = ['🔥', '⚡', '🛡️', '💀'];

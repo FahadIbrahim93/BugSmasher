@@ -6,6 +6,17 @@ import { particles, spawnParticles } from './particles';
 import { InsectRenderer } from './renderer';
 import { UPGRADE_DEFS, RARITY, SYNERGY_DEFS } from './upgrades';
 import { WORLD_SIZE, TAU, lerp, clamp, dist, angle, rand, randInt, seededRand, hsl, rgb } from './utils';
+import {
+  damageNumbers,
+  screenShake,
+  spawnDamageNumber,
+  triggerScreenShake,
+  updateScreenShake,
+  updateDamageNumbers,
+  drawDamageNumbers,
+  triggerCombatEffect,
+  updateCombatEffects
+} from './feedback';
 
 // Game State
 let isPlaying = false;
@@ -204,7 +215,8 @@ function update(dt: number) {
             e.hp -= player.attackDamage;
             sfxHit();
             spawnParticles(e.x, e.y, 10, { color: e.type.color, speed: 3 });
-            damageNumbers.push({ x: e.x, y: e.y, val: Math.floor(player.attackDamage), life: 1 });
+            spawnDamageNumber(e.x, e.y, Math.floor(player.attackDamage), { color: '#ff6666' });
+            triggerCombatEffect('hit', e.x, e.y);
             
             if (e.hp <= 0) {
               sfxKill();
@@ -212,6 +224,7 @@ function update(dt: number) {
               onScoreUpdate(score);
               enemiesKilled++;
               spawnParticles(e.x, e.y, 20, { color: e.type.color, speed: 5 });
+              triggerCombatEffect('kill', e.x, e.y, { enemyType: e.type.id });
               
               // Drop Gem
               gems.push({ x: e.x, y: e.y, xp: e.type.score, color: e.type.gemColor });
@@ -235,10 +248,12 @@ function update(dt: number) {
       sfxAbility();
       player.abilities[0].cooldown = player.abilities[0].maxCooldown;
       spawnParticles(player.x, player.y, 30, { color: '#0f0', speed: 5, life: 1 });
+      triggerCombatEffect('ability', player.x, player.y, { abilityName: 'Venom Burst' });
       for (const e of enemies) {
         if (dist(player.x, player.y, e.x, e.y) < 150) {
           e.hp -= 50;
-          damageNumbers.push({ x: e.x, y: e.y, val: 50, life: 1 });
+          spawnDamageNumber(e.x, e.y, 50, { color: '#00ff88', isCrit: true });
+          triggerCombatEffect('hit', e.x, e.y);
         }
       }
     }
@@ -296,11 +311,13 @@ function update(dt: number) {
     const spawnAngle = Math.random() * TAU;
     const spawnDist = Math.max(canvasWidth, canvasHeight) / 2 + 100;
     
-    // Choose enemy type based on wave
+    // Choose enemy type based on wave (scaled difficulty)
     let type = ENEMY_TYPES.beetle;
-    if (wave > 2 && Math.random() < 0.3) type = ENEMY_TYPES.hornet;
-    if (wave > 4 && Math.random() < 0.2) type = ENEMY_TYPES.spider;
-    if (wave > 6 && Math.random() < 0.1) type = ENEMY_TYPES.centipede;
+    if (wave > 2 && Math.random() < 0.3) type = ENEMY_TYPES.wasp;
+    if (wave > 4 && Math.random() < 0.2) type = ENEMY_TYPES.moth;
+    if (wave > 6 && Math.random() < 0.15) type = ENEMY_TYPES.soldier;
+    if (wave > 8 && Math.random() < 0.15) type = ENEMY_TYPES.spitter;
+    if (wave > 10 && Math.random() < 0.1) type = ENEMY_TYPES.tank;
     
     enemies.push({
       x: player.x + Math.cos(spawnAngle) * spawnDist,
@@ -326,12 +343,13 @@ function update(dt: number) {
     if (wave % 5 === 0) {
       const spawnAngle = Math.random() * TAU;
       const spawnDist = Math.max(canvasWidth, canvasHeight) / 2 + 100;
+      const bossType = wave % 10 === 0 ? ENEMY_TYPES.voidQueen : ENEMY_TYPES.hiveMother;
       enemies.push({
         x: player.x + Math.cos(spawnAngle) * spawnDist,
         y: player.y + Math.sin(spawnAngle) * spawnDist,
-        hp: ENEMY_TYPES.mantis.health * (1 + wave * 0.5),
-        maxHp: ENEMY_TYPES.mantis.health * (1 + wave * 0.5),
-        type: ENEMY_TYPES.mantis,
+        hp: bossType.health * (1 + wave * 0.5),
+        maxHp: bossType.health * (1 + wave * 0.5),
+        type: bossType,
         vx: 0,
         vy: 0,
         animPhase: Math.random() * TAU,
@@ -469,12 +487,13 @@ function update(dt: number) {
   }
 
   // Update Damage Numbers
-  for (let i = damageNumbers.length - 1; i >= 0; i--) {
-    const dn = damageNumbers[i];
-    dn.y -= 50 * dt;
-    dn.life -= dt;
-    if (dn.life <= 0) damageNumbers.splice(i, 1);
-  }
+  updateDamageNumbers(dt);
+
+  // Update Screen Shake
+  updateScreenShake(dt);
+
+  // Update Combat Effects
+  updateCombatEffects(dt);
 }
 
 function draw(ctx: CanvasRenderingContext2D) {
@@ -487,8 +506,8 @@ function draw(ctx: CanvasRenderingContext2D) {
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
   ctx.save();
-  // Camera transform
-  ctx.translate(-camX, -camY);
+  // Camera transform with screen shake
+  ctx.translate(-camX + screenShake.offsetX, -camY + screenShake.offsetY);
 
   // Draw Grid
   ctx.strokeStyle = '#222';
@@ -550,15 +569,10 @@ function draw(ctx: CanvasRenderingContext2D) {
   }
   InsectRenderer.drawBeetle(ctx, player.x, player.y, 15, playerAngle, gameTime * 10, player.hp, player.maxHp, 'basic', camX, camY, canvasWidth, canvasHeight);
 
-  // Draw Damage Numbers
-  ctx.font = '14px "Rajdhani", sans-serif';
-  ctx.textAlign = 'center';
-  for (const dn of damageNumbers) {
-    ctx.fillStyle = `rgba(255, 255, 255, ${dn.life})`;
-    ctx.fillText(dn.val.toString(), dn.x, dn.y);
-  }
-
   ctx.restore();
+
+  // Draw enhanced damage numbers (world space, not affected by camera transform)
+  drawDamageNumbers(ctx, camX - screenShake.offsetX, camY - screenShake.offsetY, canvasWidth, canvasHeight);
 
   // Draw Minimap
   if (minimapCtx) {
