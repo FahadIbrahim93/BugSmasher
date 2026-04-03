@@ -16,5 +16,13 @@ View your app in AI Studio: https://ai.studio/apps/80dfdd44-2b00-416c-a32e-5c4ef
 1. Install dependencies:
    `npm install`
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+3. Optionally set Firebase config in `.env.local` using `VITE_FIREBASE_*` variables or keep `firebase-applet-config.json`.
+4. Run the app:
    `npm run dev`
+
+## CI and Quality checks
+
+- `npm run lint` (TypeScript check)
+- `npm run build` (production build)
+- `npm run test` (unit tests with Vitest)
+- GitHub Actions workflow defined in `.github/workflows/ci.yml`

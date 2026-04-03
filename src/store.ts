@@ -71,10 +71,13 @@ export async function loadUserData(uid: string) {
   }
 }
 
-export async function saveUserData(uid: string) {
+export async function saveUserData(uid: string, data?: Partial<typeof userData>) {
   const path = `users/${uid}`;
   try {
     userData.uid = uid;
+    if (data) {
+      userData = { ...userData, ...data };
+    }
     userData.achievements = Array.from(unlockedAchievements);
     const docRef = doc(db, 'users', uid);
     await setDoc(docRef, userData, { merge: true });
