@@ -20,7 +20,9 @@ import {
 
 // Game State
 let isPlaying = false;
+let isPaused = false;
 let gameTime = 0;
+let pausedTime = 0;
 let lastTime = 0;
 let score = 0;
 let wave = 1;
@@ -55,6 +57,24 @@ export function getPlayerState() {
     upgradePoints: 0, // Placeholder for now
     abilities: player.abilities
   };
+}
+
+export function pauseGame() {
+  if (isPlaying && !isPaused) {
+    isPaused = true;
+    pausedTime = gameTime;
+  }
+}
+
+export function resumeGame() {
+  if (isPaused) {
+    isPaused = false;
+    lastTime = performance.now();
+  }
+}
+
+export function getPauseState() {
+  return isPaused;
 }
 
 export function initGame(
@@ -127,17 +147,21 @@ export function startGame(heroClass: any) {
   initAudio();
 }
 
-export function resumeGame() {
-  isPlaying = true;
-}
-
 function gameLoop(timestamp: number) {
   if (!lastTime) lastTime = timestamp;
   const dt = (timestamp - lastTime) / 1000;
-  lastTime = timestamp;
+  
+  // Skip time updates when paused to prevent jump when resuming
+  if (!isPaused) {
+    lastTime = timestamp;
+  }
 
   if (isPlaying && ctx) {
-    update(dt);
+    // Only update game state if not paused
+    if (!isPaused) {
+      update(dt);
+    }
+    // Always draw, even when paused (shows pause overlay)
     draw(ctx);
   }
 

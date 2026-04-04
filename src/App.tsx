@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { initGame, startGame, getPlayerState, resumeGame, setAutoAttack as setEngineAutoAttack } from './game/engine';
+import { initGame, startGame, getPlayerState, resumeGame, pauseGame, setAutoAttack as setEngineAutoAttack } from './game/engine';
 import { auth, onAuthStateChanged, signOut } from './firebase';
 import { loadUserData, saveUserData, userData } from './store';
 import { HERO_CLASSES, player } from './game/player';
@@ -13,6 +13,7 @@ export default function App() {
   const [user, setUser] = useState<any>(null);
   const [isGuest, setIsGuest] = useState(false);
   const [gameState, setGameState] = useState('loading'); // loading, title, classselect, playing, gameover, upgrading
+  const [isPaused, setIsPaused] = useState(false);
   const [selectedClass, setSelectedClass] = useState(HERO_CLASSES[0]);
   const [score, setScore] = useState(0);
   const [wave, setWave] = useState(1);
@@ -23,6 +24,7 @@ export default function App() {
   const [level, setLevel] = useState(1);
   const [upgradePoints, setUpgradePoints] = useState(0);
   const [availableUpgrades, setAvailableUpgrades] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
   
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -88,15 +90,27 @@ export default function App() {
   }, [autoAttack]);
 
   useEffect(() => {
+    if (isPaused && gameState === 'playing') {
+      pauseGame();
+    } else if (!isPaused && gameState === 'playing') {
+      resumeGame();
+    }
+  }, [isPaused, gameState]);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Tab') {
         e.preventDefault();
         setAutoAttack(prev => !prev);
       }
+      if (e.key === 'Escape' && gameState === 'playing') {
+        e.preventDefault();
+        setIsPaused(prev => !prev);
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [gameState]);
 
   const [abilities, setAbilities] = useState<any[]>([]);
 
@@ -435,6 +449,33 @@ export default function App() {
       {/* GAME CANVAS */}
       <canvas id="game-canvas" ref={canvasRef} role="img" aria-label="Game world" style={{ display: gameState === 'playing' || gameState === 'gameover' || gameState === 'upgrading' ? 'block' : 'none' }}></canvas>
 
+      {/* PAUSE MENU */}
+      {gameState === 'playing' && (
+        <>
+          <div id="pause-overlay" className={isPaused ? 'show' : ''} aria-hidden={!isPaused}></div>
+          <div id="pause-menu" className={isPaused ? 'show' : ''} role="dialog" aria-label="Pause menu" aria-modal="true">
+            <div className="pause-title">PAUSED</div>
+            <div className="pause-buttons">
+              <button className="pause-btn" onClick={() => setIsPaused(false)} aria-label="Resume game">
+                RESUME
+              </button>
+              <button className="pause-btn" onClick={() => {
+                setIsPaused(false);
+                setGameState('title');
+              }} aria-label="Return to main menu">
+                MAIN MENU
+              </button>
+              <button className="pause-btn danger" onClick={() => {
+                setIsPaused(false);
+                setGameState('gameover');
+              }} aria-label="Exit to game over">
+                QUIT
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* HUD */}
       <div id="hud" className={gameState === 'playing' ? 'active' : ''} role="region" aria-label="Game HUD" aria-live="polite">
         <div className="hud-left">
@@ -574,6 +615,23 @@ export default function App() {
       {/* MINIMAP */}
       <div className={`minimap ${gameState === 'playing' ? 'active' : ''}`} id="minimap" role="img" aria-label="Mini-map showing enemy positions">
         <canvas id="minimap-canvas" ref={minimapRef} width="140" height="140"></canvas>
+      </div>
+
+      {/* NOTIFICATIONS */}
+      <div id="notifications-container" role="region" aria-live="polite" aria-label="Game notifications">
+        {notifications.map((notif) => (
+          <div 
+            key={notif.id} 
+            className={`notification-toast type-${notif.type}`}
+            role="alert"
+          >
+            <div className="notification-icon" aria-hidden="true">{notif.icon}</div>
+            <div className="notification-content">
+              <div className="notification-title">{notif.title}</div>
+              {notif.message && <div className="notification-message">{notif.message}</div>}
+            </div>
+          </div>
+        ))}
       </div>
 
     </>
