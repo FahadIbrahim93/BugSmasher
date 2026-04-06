@@ -2,7 +2,29 @@ import { auth } from './firebase';
 import { dbService, PlayerStats } from './services/database';
 import { User } from 'firebase/auth';
 
-export let userData: PlayerStats | null = null;
+export let userData: PlayerStats = {
+  uid: '',
+  email: '',
+  displayName: '',
+  photoURL: undefined,
+  provider: '',
+  totalRuns: 0,
+  totalScore: 0,
+  totalKills: 0,
+  highScore: 0,
+  maxWave: 0,
+  totalPlayTime: 0,
+  averageScore: 0,
+  favoriteClass: '',
+  lastPlayTime: 0,
+  achievements: [],
+  createdAt: 0,
+  updatedAt: 0,
+  // Legacy aliases for compatibility
+  runs: 0,
+  bestScore: 0,
+  bestWave: 0,
+};
 export let currentUser: User | null = null;
 export let unlockedAchievements = new Set<string>();
 

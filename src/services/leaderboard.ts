@@ -13,6 +13,9 @@ export interface LeaderboardEntry {
     kills?: number;
     playtime?: number;
     achievementCount?: number;
+    score?: number;
+    highScore?: number;
+    runs?: number;
   };
   timestamp: number;
 }

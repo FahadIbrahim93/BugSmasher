@@ -1,4 +1,5 @@
 export interface EnemyType {
+  id: string;
   health: number;
   speed: number;
   size: number;
@@ -36,6 +37,7 @@ export interface Enemy {
 
 export const ENEMY_TYPES: Record<string, EnemyType> = {
   beetle: {
+    id: 'beetle',
     health: 50,
     speed: 80,
     size: 14,
@@ -47,6 +49,7 @@ export const ENEMY_TYPES: Record<string, EnemyType> = {
     gemColor: '#00ff88',
   },
   soldier: {
+    id: 'soldier',
     health: 100,
     speed: 60,
     size: 20,
@@ -58,6 +61,7 @@ export const ENEMY_TYPES: Record<string, EnemyType> = {
     gemColor: '#ff6644',
   },
   wasp: {
+    id: 'wasp',
     health: 30,
     speed: 160,
     size: 12,
@@ -69,6 +73,7 @@ export const ENEMY_TYPES: Record<string, EnemyType> = {
     gemColor: '#ffdd00',
   },
   scout: {
+    id: 'scout',
     health: 25,
     speed: 200,
     size: 10,
@@ -80,6 +85,7 @@ export const ENEMY_TYPES: Record<string, EnemyType> = {
     gemColor: '#ffee44',
   },
   moth: {
+    id: 'moth',
     health: 40,
     speed: 100,
     size: 16,
@@ -91,6 +97,7 @@ export const ENEMY_TYPES: Record<string, EnemyType> = {
     gemColor: '#cc44ff',
   },
   spitter: {
+    id: 'spitter',
     health: 45,
     speed: 65,
     size: 15,
@@ -104,6 +111,7 @@ export const ENEMY_TYPES: Record<string, EnemyType> = {
     fireRate: 2.2,
   },
   tank: {
+    id: 'tank',
     health: 220,
     speed: 45,
     size: 26,
@@ -115,6 +123,7 @@ export const ENEMY_TYPES: Record<string, EnemyType> = {
     gemColor: '#ff4400',
   },
   berserker: {
+    id: 'berserker',
     health: 70,
     speed: 130,
     size: 16,
@@ -126,6 +135,7 @@ export const ENEMY_TYPES: Record<string, EnemyType> = {
     gemColor: '#ff2200',
   },
   shaman: {
+    id: 'shaman',
     health: 60,
     speed: 70,
     size: 18,
@@ -139,6 +149,7 @@ export const ENEMY_TYPES: Record<string, EnemyType> = {
     healRate: 0.8,
   },
   charger: {
+    id: 'charger',
     health: 80,
     speed: 90,
     size: 18,
@@ -152,6 +163,7 @@ export const ENEMY_TYPES: Record<string, EnemyType> = {
     chargeCooldown: 4,
   },
   phantom: {
+    id: 'phantom',
     health: 55,
     speed: 110,
     size: 14,
@@ -164,6 +176,7 @@ export const ENEMY_TYPES: Record<string, EnemyType> = {
     phaseTime: 2.5,
   },
   hornet: {
+    id: 'hornet',
     health: 35,
     speed: 140,
     size: 13,
@@ -177,6 +190,7 @@ export const ENEMY_TYPES: Record<string, EnemyType> = {
     fireRate: 1.8,
   },
   spider: {
+    id: 'spider',
     health: 60,
     speed: 120,
     size: 16,
@@ -190,6 +204,7 @@ export const ENEMY_TYPES: Record<string, EnemyType> = {
     chargeCooldown: 3,
   },
   centipede: {
+    id: 'centipede',
     health: 45,
     speed: 100,
     size: 12,
@@ -201,6 +216,7 @@ export const ENEMY_TYPES: Record<string, EnemyType> = {
     gemColor: '#ffaa00',
   },
   hiveMother: {
+    id: 'hiveMother',
     health: 800,
     speed: 50,
     size: 40,
@@ -213,6 +229,7 @@ export const ENEMY_TYPES: Record<string, EnemyType> = {
     bossPhases: 2,
   },
   voidQueen: {
+    id: 'voidQueen',
     health: 1600,
     speed: 60,
     size: 50,

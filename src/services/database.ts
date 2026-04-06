@@ -35,6 +35,10 @@ export interface PlayerStats {
   maxWave: number;
   totalPlayTime: number;
   averageScore: number;
+  // Legacy aliases for compatibility
+  runs?: number;
+  bestScore?: number;
+  bestWave?: number;
   favoriteClass: string;
   lastPlayTime: number;
   achievements: string[];

@@ -342,7 +342,7 @@ export default function App() {
             <button className="start-btn" id="start-btn" aria-label="Start game and choose class" style={{ marginTop: '10px' }} onClick={() => setGameState('classselect')}>
               ENGAGE
             </button>
-            <button id="logout-btn" style={{ background: 'transparent', border: 'none', color: 'rgba(255,100,100,0.8)', fontFamily: "'Orbitron', monospace", fontSize: '10px', cursor: 'pointer', letterSpacing: '2px', textDecoration: 'underline', marginTop: '10px' }} onClick={() => signOut()}>
+            <button id="logout-btn" style={{ background: 'transparent', border: 'none', color: 'rgba(255,100,100,0.8)', fontFamily: "'Orbitron', monospace", fontSize: '10px', cursor: 'pointer', letterSpacing: '2px', textDecoration: 'underline', marginTop: '10px' }} onClick={() => signOut(auth)}>
               LOGOUT
             </button>
           </div>

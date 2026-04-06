@@ -1,5 +1,4 @@
-import { useEffect, useRef } from 'react';
-import { Log, initAudio, playTone, sfxAttack, sfxKill, sfxHit, sfxAbility } from './audio';
+import { initAudio, playTone, sfxAttack, sfxKill, sfxHit, sfxAbility } from './audio';
 import { player, HERO_CLASSES } from './player';
 import { enemies, ENEMY_TYPES, setEnemies } from './enemies';
 import { particles, spawnParticles } from './particles';
@@ -31,7 +30,6 @@ let canvasWidth = 0;
 let canvasHeight = 0;
 let projectiles: any[] = [];
 let gems: any[] = [];
-let damageNumbers: any[] = [];
 
 // Input State
 const keys: { [key: string]: boolean } = {};
@@ -105,7 +103,7 @@ export function startGame(heroClass: any) {
   setEnemies([]);
   projectiles = [];
   gems = [];
-  damageNumbers = [];
+  damageNumbers.length = 0;
   
   // Reset Player
   player.x = WORLD_SIZE / 2;
@@ -269,7 +267,7 @@ function update(dt: number) {
         const target = enemies.reduce((prev, curr) => dist(player.x, player.y, prev.x, prev.y) < dist(player.x, player.y, curr.x, curr.y) ? prev : curr);
         if (dist(player.x, player.y, target.x, target.y) < 300) {
           target.hp -= 100;
-          damageNumbers.push({ x: target.x, y: target.y, val: 100, life: 1 });
+          damageNumbers.push({ x: target.x, y: target.y, value: 100, color: '#ff6666', life: 1, maxLife: 1, isCrit: false, isHeal: false });
           // Draw lightning bolt (handled in draw loop ideally, but this is a quick hack)
           ctx!.strokeStyle = '#ff0';
           ctx!.lineWidth = 3;
@@ -300,7 +298,7 @@ function update(dt: number) {
     for (const e of enemies) {
       if (dist(player.x, player.y, e.x, e.y) < 200) {
         e.hp -= 80;
-        damageNumbers.push({ x: e.x, y: e.y, val: 80, life: 1 });
+        damageNumbers.push({ x: e.x, y: e.y, value: 80, color: '#ff6666', life: 1, maxLife: 1, isCrit: false, isHeal: false });
       }
     }
     keys['r'] = false;
@@ -327,6 +325,8 @@ function update(dt: number) {
       type: type,
       vx: 0,
       vy: 0,
+      chargeVx: 0,
+      chargeVy: 0,
       animPhase: Math.random() * TAU,
       state: 'chase',
       stateTimer: 0,
@@ -352,6 +352,8 @@ function update(dt: number) {
         type: bossType,
         vx: 0,
         vy: 0,
+        chargeVx: 0,
+        chargeVy: 0,
         animPhase: Math.random() * TAU,
         state: 'chase',
         stateTimer: 0,
@@ -418,7 +420,7 @@ function update(dt: number) {
         player.hp -= p.damage;
         sfxHit();
         spawnParticles(player.x, player.y, 5, { color: p.color, speed: 2 });
-        damageNumbers.push({ x: player.x, y: player.y, val: Math.floor(p.damage), life: 1 });
+        damageNumbers.push({ x: player.x, y: player.y, value: Math.floor(p.damage), color: '#ff6666', life: 1, maxLife: 1, isCrit: false, isHeal: false });
         hit = true;
         if (player.hp <= 0) {
           isPlaying = false;
@@ -433,7 +435,7 @@ function update(dt: number) {
           e.hp -= p.damage;
           sfxHit();
           spawnParticles(e.x, e.y, 5, { color: e.type.color, speed: 2 });
-          damageNumbers.push({ x: e.x, y: e.y, val: Math.floor(p.damage), life: 1 });
+          damageNumbers.push({ x: e.x, y: e.y, value: Math.floor(p.damage), color: '#ff6666', life: 1, maxLife: 1, isCrit: false, isHeal: false });
           
           if (e.hp <= 0) {
             sfxKill();
@@ -541,7 +543,7 @@ function draw(ctx: CanvasRenderingContext2D) {
 
   // Draw Enemies
   for (const e of enemies) {
-    InsectRenderer.drawBeetle(ctx, e.x, e.y, e.type.size, angle(e.x, e.y, player.x, player.y), e.animPhase, e.hp, e.maxHp, e.type.rendType, camX, camY, canvasWidth, canvasHeight);
+    InsectRenderer.drawBeetle(ctx, e.x, e.y, e.type.size, angle(e.x, e.y, player.x, player.y), e.animPhase, e.hp, e.maxHp, e.type.rendType);
   }
 
   // Draw Projectiles
@@ -558,7 +560,7 @@ function draw(ctx: CanvasRenderingContext2D) {
 
   // Draw Particles
   for (const p of particles) {
-    p.draw(ctx, camX, camY);
+    p.draw(ctx);
   }
 
   // Draw Player
@@ -567,7 +569,7 @@ function draw(ctx: CanvasRenderingContext2D) {
     const target = enemies.reduce((prev, curr) => dist(player.x, player.y, prev.x, prev.y) < dist(player.x, player.y, curr.x, curr.y) ? prev : curr);
     playerAngle = angle(player.x, player.y, target.x, target.y);
   }
-  InsectRenderer.drawBeetle(ctx, player.x, player.y, 15, playerAngle, gameTime * 10, player.hp, player.maxHp, 'basic', camX, camY, canvasWidth, canvasHeight);
+  InsectRenderer.drawBeetle(ctx, player.x, player.y, 15, playerAngle, gameTime * 10, player.hp, player.maxHp, 'basic');
 
   ctx.restore();
 
