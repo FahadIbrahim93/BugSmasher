@@ -41,7 +41,7 @@ export async function loadUserData(uid: string) {
 
     currentUser = user;
     const stats = await dbService.getPlayerStats(uid);
-    
+
     if (stats) {
       userData = stats;
       unlockedAchievements = new Set(stats.achievements || []);
@@ -67,7 +67,7 @@ export async function loadUserData(uid: string) {
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
-      
+
       await dbService.savePlayerStats(user, newStats);
       userData = newStats;
       console.log('[v0] New player stats created');
@@ -91,11 +91,11 @@ export async function saveUserData(uid: string, stats?: Partial<PlayerStats>) {
 
     const mergedStats = { ...userData, ...stats };
     await dbService.savePlayerStats(user, mergedStats);
-    
+
     if (userData) {
       userData = { ...userData, ...mergedStats };
     }
-    
+
     console.log('[v0] User data saved successfully');
   } catch (error) {
     console.error('[v0] Failed to save user data:', error);
@@ -123,7 +123,28 @@ export function updatePlayerStatsLocally(updates: Partial<PlayerStats>) {
  * Clear user data
  */
 export function clearUserData() {
-  userData = null;
+  userData = {
+    uid: '',
+    email: '',
+    displayName: '',
+    photoURL: undefined,
+    provider: '',
+    totalRuns: 0,
+    totalScore: 0,
+    totalKills: 0,
+    highScore: 0,
+    maxWave: 0,
+    totalPlayTime: 0,
+    averageScore: 0,
+    favoriteClass: '',
+    lastPlayTime: 0,
+    achievements: [],
+    createdAt: 0,
+    updatedAt: 0,
+    runs: 0,
+    bestScore: 0,
+    bestWave: 0,
+  };
   currentUser = null;
   unlockedAchievements.clear();
   console.log('[v0] User data cleared');

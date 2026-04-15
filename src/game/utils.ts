@@ -161,7 +161,7 @@ export interface RunStats {
 }
 
 export const Log = (() => {
-  const PREFIX = '[INSECTILES]';
+  const PREFIX = '[HOPE THEORY]';
   const VERBOSE = false;
   return {
     info(scope: string, msg: string, data?: unknown) {

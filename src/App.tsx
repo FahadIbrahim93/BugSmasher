@@ -1,6 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
-import { initGame, startGame, getPlayerState, resumeGame, setAutoAttack as setEngineAutoAttack } from './game/engine';
+import {
+  initGame,
+  startGame,
+  getPlayerState,
+  resumeGame,
+  setAutoAttack as setEngineAutoAttack,
+  setMovementInput,
+  setFireInput,
+  setAimPosition,
+  triggerAbility,
+} from './game/engine';
 import { auth, onAuthStateChanged, signOut } from './firebase';
+import { createGuestSession, endGuestSession } from './services/guest';
 import { loadUserData, saveUserData, userData } from './store';
 import { HERO_CLASSES, player } from './game/player';
 import { UPGRADE_DEFS } from './game/upgrades';
@@ -10,6 +21,7 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const minimapRef = useRef<HTMLCanvasElement>(null);
   const [user, setUser] = useState<any>(null);
+  const [guestMode, setGuestMode] = useState(false);
   const [gameState, setGameState] = useState('loading'); // loading, title, classselect, playing, gameover, upgrading
   const [selectedClass, setSelectedClass] = useState(HERO_CLASSES[0]);
   const [score, setScore] = useState(0);
@@ -21,27 +33,69 @@ export default function App() {
   const [level, setLevel] = useState(1);
   const [upgradePoints, setUpgradePoints] = useState(0);
   const [availableUpgrades, setAvailableUpgrades] = useState<any[]>([]);
-  
+  const [colorblindMode, setColorblindMode] = useState<
+    'normal' | 'protanopia' | 'deuteranopia' | 'tritanopia'
+  >('normal');
+
+  useEffect(() => {
+    document.body.className = colorblindMode !== 'normal' ? `colorblind-${colorblindMode}` : '';
+  }, [colorblindMode]);
+
+  // Handle colorblind panel toggle and radio selection
+  useEffect(() => {
+    const panel = document.getElementById('colorblind-panel');
+    const btn = document.getElementById('accessibility-btn');
+    const radios = document.querySelectorAll('input[name="cb"]');
+
+    const togglePanel = () => {
+      panel?.classList.toggle('open');
+      btn?.classList.toggle('active');
+    };
+
+    const handleRadioChange = (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      setColorblindMode(target.value as any);
+      panel?.classList.remove('open');
+      btn?.classList.remove('active');
+    };
+
+    btn?.addEventListener('click', togglePanel);
+    radios.forEach((r) => r.addEventListener('change', handleRadioChange));
+
+    return () => {
+      btn?.removeEventListener('click', togglePanel);
+      radios.forEach((r) => r.removeEventListener('change', handleRadioChange));
+    };
+  }, []);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (guestMode) {
+        if (currentUser) {
+          setGuestMode(false);
+          setUser(currentUser);
+          await loadUserData(currentUser.uid);
+        }
+        return;
+      }
       setUser(currentUser);
       if (currentUser) {
         await loadUserData(currentUser.uid);
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [guestMode]);
 
   useEffect(() => {
     if (canvasRef.current && minimapRef.current) {
       initGame(
-        canvasRef.current, 
+        canvasRef.current,
         minimapRef.current,
         async (finalScore, finalWave) => {
           setScore(finalScore);
           setWave(finalWave);
           setGameState('gameover');
-          
+
           if (user) {
             // Save high score
             if (finalScore > (userData.highScore || 0)) {
@@ -65,7 +119,7 @@ export default function App() {
           const desc = document.getElementById('wave-desc');
           if (announce && num && desc) {
             num.innerText = `WAVE ${newWave}`;
-            desc.innerText = newWave % 5 === 0 ? "APEX PREDATOR DETECTED" : "THE SWARM GROWS";
+            desc.innerText = newWave % 5 === 0 ? 'APEX PREDATOR DETECTED' : 'THE SWARM GROWS';
             announce.classList.add('show');
             setTimeout(() => announce.classList.remove('show'), 3000);
           }
@@ -85,7 +139,7 @@ export default function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Tab') {
         e.preventDefault();
-        setAutoAttack(prev => !prev);
+        setAutoAttack((prev) => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -116,6 +170,30 @@ export default function App() {
     return () => cancelAnimationFrame(animationFrameId);
   }, [gameState]);
 
+  const handlePlayAsGuest = () => {
+    const session = createGuestSession();
+    setUser({
+      uid: session.sessionId,
+      displayName: session.displayName,
+      email: null,
+      photoURL: null,
+      isGuest: true,
+    });
+    setGuestMode(true);
+    setGameState('classselect');
+  };
+
+  const handleLogout = async () => {
+    if ((user as any)?.isGuest) {
+      endGuestSession();
+      setGuestMode(false);
+      setUser(null);
+      setGameState('title');
+      return;
+    }
+    await signOut(auth);
+  };
+
   const handleStartGame = () => {
     setGameState('playing');
     startGame(selectedClass);
@@ -129,8 +207,8 @@ export default function App() {
 
   const handleSelectUpgrade = (upgrade: any) => {
     // Apply upgrade logic
-    console.log("Selected upgrade:", upgrade.name);
-    
+    console.log('Selected upgrade:', upgrade.name);
+
     // Apply upgrade logic here
     if (upgrade.id.startsWith('dmg_')) {
       player.attackDamage += upgrade.value;
@@ -140,19 +218,19 @@ export default function App() {
       player.maxHp += upgrade.value;
       player.hp += upgrade.value;
     } else if (upgrade.id.startsWith('rate_')) {
-      player.attackRate *= (1 - upgrade.value);
+      player.attackRate *= 1 - upgrade.value;
     } else if (upgrade.id.startsWith('range_')) {
       player.attackRange += upgrade.value;
     } else if (upgrade.id.startsWith('heal_')) {
       player.hp = Math.min(player.maxHp, player.hp + upgrade.value);
     }
-    
+
     // Resume game
     setGameState('playing');
     resumeGame();
   };
 
-  // Mobile controls
+  // Mobile controls - refactored to use direct engine APIs (no synthetic events)
   useEffect(() => {
     if (gameState !== 'playing') return;
 
@@ -185,12 +263,7 @@ export default function App() {
           fireTouchId = t.identifier;
           fireBtn.style.transform = 'scale(0.9)';
           fireBtn.style.background = 'rgba(255, 255, 255, 0.4)';
-          // Simulate mouse down for firing
-          const canvas = canvasRef.current;
-          if (canvas) {
-            const event = new MouseEvent('mousedown');
-            canvas.dispatchEvent(event);
-          }
+          setFireInput(true);
         }
       }
     };
@@ -204,39 +277,16 @@ export default function App() {
           const dy = t.clientY - basePos.y;
           const dist = Math.min(Math.hypot(dx, dy), 50);
           const angle = Math.atan2(dy, dx);
-          
+
           joystickThumb.style.left = `${basePos.x + Math.cos(angle) * dist - 25}px`;
           joystickThumb.style.top = `${basePos.y + Math.sin(angle) * dist - 25}px`;
 
-          // Simulate key presses based on joystick angle
-          const eventUp = new KeyboardEvent('keyup', { key: 'w' });
-          const eventDown = new KeyboardEvent('keyup', { key: 's' });
-          const eventLeft = new KeyboardEvent('keyup', { key: 'a' });
-          const eventRight = new KeyboardEvent('keyup', { key: 'd' });
-          window.dispatchEvent(eventUp);
-          window.dispatchEvent(eventDown);
-          window.dispatchEvent(eventLeft);
-          window.dispatchEvent(eventRight);
-
-          if (dist > 10) {
-            if (Math.abs(dx) > Math.abs(dy)) {
-              if (dx > 0) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd' }));
-              else window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
-            } else {
-              if (dy > 0) window.dispatchEvent(new KeyboardEvent('keydown', { key: 's' }));
-              else window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w' }));
-            }
-          }
+          // Direct input to engine - normalized -1 to 1
+          const normX = dist > 10 ? dx / 50 : 0;
+          const normY = dist > 10 ? dy / 50 : 0;
+          setMovementInput(normX, normY);
         } else if (t.identifier === fireTouchId) {
-          // Update aim direction
-          const canvas = canvasRef.current;
-          if (canvas) {
-            const event = new MouseEvent('mousemove', {
-              clientX: t.clientX,
-              clientY: t.clientY
-            });
-            canvas.dispatchEvent(event);
-          }
+          setAimPosition(t.clientX, t.clientY);
         }
       }
     };
@@ -249,19 +299,12 @@ export default function App() {
           touchId = null;
           joystickBase.style.display = 'none';
           joystickThumb.style.display = 'none';
-          window.dispatchEvent(new KeyboardEvent('keyup', { key: 'w' }));
-          window.dispatchEvent(new KeyboardEvent('keyup', { key: 's' }));
-          window.dispatchEvent(new KeyboardEvent('keyup', { key: 'a' }));
-          window.dispatchEvent(new KeyboardEvent('keyup', { key: 'd' }));
+          setMovementInput(0, 0);
         } else if (t.identifier === fireTouchId) {
           fireTouchId = null;
           fireBtn.style.transform = 'scale(1)';
           fireBtn.style.background = 'rgba(255, 255, 255, 0.2)';
-          const canvas = canvasRef.current;
-          if (canvas) {
-            const event = new MouseEvent('mouseup');
-            canvas.dispatchEvent(event);
-          }
+          setFireInput(false);
         }
       }
     };
@@ -282,17 +325,11 @@ export default function App() {
       e.preventDefault();
       const btn = e.currentTarget as HTMLElement;
       const abIndex = btn.getAttribute('data-ab');
-      let key = '';
-      if (abIndex === '0') key = 'q';
-      if (abIndex === '1') key = 'w';
-      if (abIndex === '2') key = 'e';
-      if (abIndex === '3') key = 'r';
-      if (key) {
-        window.dispatchEvent(new KeyboardEvent('keydown', { key }));
-        setTimeout(() => window.dispatchEvent(new KeyboardEvent('keyup', { key })), 100);
-      }
+      const abilityMap: Record<string, string> = { '0': 'q', '1': 'w', '2': 'e', '3': 'r' };
+      const key = abilityMap[abIndex ?? ''];
+      if (key) triggerAbility(key);
     };
-    abBtns.forEach(btn => btn.addEventListener('touchstart', handleAbTouch, { passive: false }));
+    abBtns.forEach((btn) => btn.addEventListener('touchstart', handleAbTouch, { passive: false }));
 
     return () => {
       joystickZone.removeEventListener('touchstart', handleTouchStart);
@@ -304,8 +341,8 @@ export default function App() {
       fireZone.removeEventListener('touchmove', handleTouchMove);
       fireZone.removeEventListener('touchend', handleTouchEnd);
       fireZone.removeEventListener('touchcancel', handleTouchEnd);
-      
-      abBtns.forEach(btn => btn.removeEventListener('touchstart', handleAbTouch));
+
+      abBtns.forEach((btn) => btn.removeEventListener('touchstart', handleAbTouch));
     };
   }, [gameState]);
 
@@ -314,7 +351,14 @@ export default function App() {
       {/* LOADER */}
       {gameState === 'loading' && (
         <div id="loader" role="status" aria-live="polite" aria-label="Loading game systems">
-          <div className="load-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={0} aria-label="Loading progress">
+          <div
+            className="load-bar"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={0}
+            aria-label="Loading progress"
+          >
             <div className="load-fill" id="load-fill" style={{ width: '100%' }}></div>
           </div>
           <div className="load-text">INITIALIZING SYSTEMS</div>
@@ -322,47 +366,109 @@ export default function App() {
       )}
 
       {/* TITLE SCREEN */}
-      <div id="title-screen" className={gameState !== 'title' ? 'hidden' : ''} role="main" aria-label="Title screen">
+      <div
+        id="title-screen"
+        className={gameState !== 'title' ? 'hidden' : ''}
+        role="main"
+        aria-label="Title screen"
+      >
         <div className="title-glow" aria-hidden="true"></div>
-        <div className="title-text" aria-label="Insectiles">INSECTILES</div>
-        <div className="title-sub">Survive the Swarm</div>
-        
+        <div className="title-text" aria-label="Hope Theory">
+          HOPE THEORY
+        </div>
+        <div className="title-sub">Survive the System</div>
+
         {user ? (
-          <div id="user-info" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', marginTop: '40px', zIndex: 2 }}>
+          <div
+            id="user-info"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '10px',
+              marginTop: '40px',
+              zIndex: 2,
+            }}
+          >
             {user.photoURL && (
-              <img 
-                src={user.photoURL} 
-                alt={user.displayName || 'User'} 
-                style={{ width: '60px', height: '60px', borderRadius: '50%', border: '2px solid rgba(0,255,100,0.5)' }}
+              <img
+                src={user.photoURL}
+                alt={user.displayName || 'User'}
+                style={{
+                  width: '60px',
+                  height: '60px',
+                  borderRadius: '50%',
+                  border: '2px solid rgba(0,255,100,0.5)',
+                }}
               />
             )}
-            <div style={{ color: 'rgba(0,255,100,0.8)', fontFamily: "'Orbitron', monospace", fontSize: '14px', letterSpacing: '2px' }} id="welcome-msg">
+            <div
+              style={{
+                color: 'rgba(0,255,100,0.8)',
+                fontFamily: "'Orbitron', monospace",
+                fontSize: '14px',
+                letterSpacing: '2px',
+              }}
+              id="welcome-msg"
+            >
               WELCOME, {(user.displayName || user.email)?.toUpperCase()}
             </div>
-            <button className="start-btn" id="start-btn" aria-label="Start game and choose class" style={{ marginTop: '10px' }} onClick={() => setGameState('classselect')}>
+            <button
+              className="start-btn"
+              id="start-btn"
+              aria-label="Start game and choose class"
+              style={{ marginTop: '10px' }}
+              onClick={() => setGameState('classselect')}
+            >
               ENGAGE
             </button>
-            <button id="logout-btn" style={{ background: 'transparent', border: 'none', color: 'rgba(255,100,100,0.8)', fontFamily: "'Orbitron', monospace", fontSize: '10px', cursor: 'pointer', letterSpacing: '2px', textDecoration: 'underline', marginTop: '10px' }} onClick={() => signOut(auth)}>
+            <button
+              id="logout-btn"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'rgba(255,100,100,0.8)',
+                fontFamily: "'Orbitron', monospace",
+                fontSize: '10px',
+                cursor: 'pointer',
+                letterSpacing: '2px',
+                textDecoration: 'underline',
+                marginTop: '10px',
+              }}
+              onClick={handleLogout}
+            >
               LOGOUT
             </button>
           </div>
         ) : (
-          <AuthPanel user={user} onAuthChange={() => {
-            // Force re-render and reload user data
-            onAuthStateChanged(auth, async (currentUser) => {
-              setUser(currentUser);
-              if (currentUser) {
-                await loadUserData(currentUser.uid);
-              }
-            });
-          }} />
+          <AuthPanel
+            user={user}
+            onAuthChange={() => {
+              // Force re-render and reload user data
+              onAuthStateChanged(auth, async (currentUser) => {
+                setUser(currentUser);
+                if (currentUser) {
+                  await loadUserData(currentUser.uid);
+                }
+              });
+            }}
+            onPlayAsGuest={handlePlayAsGuest}
+          />
         )}
 
-        <div className="version-tag" aria-label="Version info">APEX SWARM EDITION v5.0 — PRODUCTION BUILD</div>
+        <div className="version-tag" aria-label="Version info">
+          HOPE THEORY v1.0 — PRODUCTION BUILD
+        </div>
       </div>
 
       {/* CLASS SELECT SCREEN */}
-      <div id="class-select" className={gameState === 'classselect' ? 'show' : ''} role="dialog" aria-modal="true" aria-label="Choose your hero class">
+      <div
+        id="class-select"
+        className={gameState === 'classselect' ? 'show' : ''}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Choose your hero class"
+      >
         <div className="cs-title">CHOOSE YOUR FORM</div>
         <div className="cs-sub">YOUR LINEAGE SHAPES YOUR DESTINY</div>
         <div className="cs-grid" id="cs-grid" role="radiogroup" aria-label="Hero classes">
@@ -377,74 +483,222 @@ export default function App() {
               onClick={() => setSelectedClass(cls)}
             >
               <span className="cs-emoji">{cls.emoji}</span>
-              <div className="cs-name" style={{ color: cls.color }}>{cls.name}</div>
+              <div className="cs-name" style={{ color: cls.color }}>
+                {cls.name}
+              </div>
               <div className="cs-role">{cls.role}</div>
               <div className="cs-lore">{cls.lore}</div>
               <div className="cs-stats">
-                <div className="cs-stat-row"><span style={{ width: '60px' }}>SPD</span><div className="cs-stat-bar"><div className="cs-stat-fill" style={{ width: `${cls.statLabels.speed}%`, background: cls.color }}></div></div></div>
-                <div className="cs-stat-row"><span style={{ width: '60px' }}>VIT</span><div className="cs-stat-bar"><div className="cs-stat-fill" style={{ width: `${cls.statLabels.health}%`, background: cls.color }}></div></div></div>
-                <div className="cs-stat-row"><span style={{ width: '60px' }}>ATK</span><div className="cs-stat-bar"><div className="cs-stat-fill" style={{ width: `${cls.statLabels.damage}%`, background: cls.color }}></div></div></div>
-                <div className="cs-stat-row"><span style={{ width: '60px' }}>RANGE</span><div className="cs-stat-bar"><div className="cs-stat-fill" style={{ width: `${cls.statLabels.range}%`, background: cls.color }}></div></div></div>
+                <div className="cs-stat-row">
+                  <span style={{ width: '60px' }}>SPD</span>
+                  <div className="cs-stat-bar">
+                    <div
+                      className="cs-stat-fill"
+                      style={{ width: `${cls.statLabels.speed}%`, background: cls.color }}
+                    ></div>
+                  </div>
+                </div>
+                <div className="cs-stat-row">
+                  <span style={{ width: '60px' }}>VIT</span>
+                  <div className="cs-stat-bar">
+                    <div
+                      className="cs-stat-fill"
+                      style={{ width: `${cls.statLabels.health}%`, background: cls.color }}
+                    ></div>
+                  </div>
+                </div>
+                <div className="cs-stat-row">
+                  <span style={{ width: '60px' }}>ATK</span>
+                  <div className="cs-stat-bar">
+                    <div
+                      className="cs-stat-fill"
+                      style={{ width: `${cls.statLabels.damage}%`, background: cls.color }}
+                    ></div>
+                  </div>
+                </div>
+                <div className="cs-stat-row">
+                  <span style={{ width: '60px' }}>RANGE</span>
+                  <div className="cs-stat-bar">
+                    <div
+                      className="cs-stat-fill"
+                      style={{ width: `${cls.statLabels.range}%`, background: cls.color }}
+                    ></div>
+                  </div>
+                </div>
               </div>
-              <div style={{ marginTop: '10px', fontFamily: "'Rajdhani', sans-serif", fontSize: '11px', color: cls.color, opacity: 0.7 }}>✦ {cls.passive}</div>
+              <div
+                style={{
+                  marginTop: '10px',
+                  fontFamily: "'Rajdhani', sans-serif",
+                  fontSize: '11px',
+                  color: cls.color,
+                  opacity: 0.7,
+                }}
+              >
+                ✦ {cls.passive}
+              </div>
             </div>
           ))}
         </div>
-        <button className="cs-start-btn" id="cs-start-btn" aria-label="Begin run with selected class" onClick={handleStartGame}>ENTER THE SWARM</button>
+        <button
+          className="cs-start-btn"
+          id="cs-start-btn"
+          aria-label="Begin run with selected class"
+          onClick={handleStartGame}
+        >
+          ENTER THE SWARM
+        </button>
       </div>
 
       {/* GAME OVER SCREEN */}
-      <div id="game-over" className={gameState === 'gameover' ? 'show' : ''} role="dialog" aria-modal="true" aria-label="Game Over">
+      <div
+        id="game-over"
+        className={gameState === 'gameover' ? 'show' : ''}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Game Over"
+      >
         <div className="go-title">SWARM OVERWHELM</div>
         <div className="go-stats">
-          <div>FINAL SCORE: <span id="go-score" style={{ color: 'var(--c-accent)' }}>{score}</span></div>
-          <div>WAVES SURVIVED: <span id="go-wave" style={{ color: 'var(--c-accent)' }}>{wave}</span></div>
+          <div>
+            FINAL SCORE:{' '}
+            <span id="go-score" style={{ color: 'var(--c-accent)' }}>
+              {score}
+            </span>
+          </div>
+          <div>
+            WAVES SURVIVED:{' '}
+            <span id="go-wave" style={{ color: 'var(--c-accent)' }}>
+              {wave}
+            </span>
+          </div>
           {user && userData && (
             <div style={{ marginTop: '10px', fontSize: '14px', color: '#888' }}>
               HIGH SCORE: {userData.highScore || 0}
             </div>
           )}
         </div>
-        <button className="start-btn" id="restart-btn" aria-label="Restart game" onClick={() => setGameState('title')}>RETURN TO NEST</button>
+        <button
+          className="start-btn"
+          id="restart-btn"
+          aria-label="Restart game"
+          onClick={() => setGameState('title')}
+        >
+          RETURN TO NEST
+        </button>
       </div>
 
       {/* GAME CANVAS */}
-      <canvas id="game-canvas" ref={canvasRef} role="img" aria-label="Game world" style={{ display: gameState === 'playing' || gameState === 'gameover' || gameState === 'upgrading' ? 'block' : 'none' }}></canvas>
+      <canvas
+        id="game-canvas"
+        ref={canvasRef}
+        role="img"
+        aria-label="Game world"
+        style={{
+          display:
+            gameState === 'playing' || gameState === 'gameover' || gameState === 'upgrading'
+              ? 'block'
+              : 'none',
+        }}
+      ></canvas>
 
       {/* HUD */}
-      <div id="hud" className={gameState === 'playing' ? 'show' : ''} role="region" aria-label="Game HUD" aria-live="polite">
+      <div
+        id="hud"
+        className={gameState === 'playing' ? 'show' : ''}
+        role="region"
+        aria-label="Game HUD"
+        aria-live="polite"
+      >
         <div className="hud-left">
-          <div className="hud-label" id="vitality-label">VITALITY</div>
-          <div className="health-bar-container" role="progressbar" aria-labelledby="vitality-label" aria-valuemin={0} aria-valuemax={100} aria-valuenow={(hp / maxHp) * 100}>
-            <div className="health-bar" id="health-bar" style={{ width: `${(hp / maxHp) * 100}%` }}></div>
+          <div className="hud-label" id="vitality-label">
+            VITALITY
           </div>
-          <div className="hud-label" style={{ marginTop: '8px' }}>SCORE</div>
-          <div className="hud-value" id="score-display" aria-label={`Score: ${score}`}>{score}</div>
+          <div
+            className="health-bar-container"
+            role="progressbar"
+            aria-labelledby="vitality-label"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={(hp / maxHp) * 100}
+          >
+            <div
+              className="health-bar"
+              id="health-bar"
+              style={{ width: `${(hp / maxHp) * 100}%` }}
+            ></div>
+          </div>
+          <div className="hud-label" style={{ marginTop: '8px' }}>
+            SCORE
+          </div>
+          <div className="hud-value" id="score-display" aria-label={`Score: ${score}`}>
+            {score}
+          </div>
         </div>
         <div className="hud-center">
-          <div className="wave-title" id="wave-display" aria-label="Current wave">WAVE {wave}</div>
-          <div className="combo-display" id="combo-display" aria-label="Combo multiplier" aria-live="polite">x1</div>
+          <div className="wave-title" id="wave-display" aria-label="Current wave">
+            WAVE {wave}
+          </div>
+          <div
+            className="combo-display"
+            id="combo-display"
+            aria-label="Combo multiplier"
+            aria-live="polite"
+          >
+            x1
+          </div>
         </div>
         <div className="hud-right">
           <div className="hud-label">ENEMIES</div>
-          <div className="hud-value" id="enemy-count" aria-label="Remaining enemies">0</div>
-          <div className="hud-label" style={{ marginTop: '8px' }}>KILLS</div>
-          <div className="hud-value" id="kill-count" style={{ fontSize: '20px' }} aria-label="Total kills">0</div>
+          <div className="hud-value" id="enemy-count" aria-label="Remaining enemies">
+            0
+          </div>
+          <div className="hud-label" style={{ marginTop: '8px' }}>
+            KILLS
+          </div>
+          <div
+            className="hud-value"
+            id="kill-count"
+            style={{ fontSize: '20px' }}
+            aria-label="Total kills"
+          >
+            0
+          </div>
         </div>
       </div>
 
       {/* ABILITY BAR */}
-      <div className={`ability-bar ${gameState === 'playing' ? 'show' : ''}`} id="ability-bar" role="toolbar" aria-label="Abilities">
+      <div
+        className={`ability-bar ${gameState === 'playing' ? 'show' : ''}`}
+        id="ability-bar"
+        role="toolbar"
+        aria-label="Abilities"
+      >
         {abilities.map((ab, idx) => {
           const keys = ['Q', 'W', 'E', 'R'];
           const icons = ['🔥', '⚡', '🛡️', '💀'];
           const isReady = ab.cooldown <= 0;
           const cdPercent = isReady ? 0 : (ab.cooldown / ab.maxCooldown) * 100;
           return (
-            <div key={idx} className={`ability-slot ${isReady ? 'ready' : ''}`} id={`ab${idx}`} role="button" aria-label={`Ability ${idx + 1}: ${ab.name} (${keys[idx]})`} tabIndex={-1}>
-              <span className="key" aria-hidden="true">{keys[idx]}</span>
-              <span className="icon" aria-hidden="true">{icons[idx]}</span>
-              <div className="cooldown-overlay" style={{ height: `${cdPercent}%` }} aria-hidden="true"></div>
+            <div
+              key={idx}
+              className={`ability-slot ${isReady ? 'ready' : ''}`}
+              id={`ab${idx}`}
+              role="button"
+              aria-label={`Ability ${idx + 1}: ${ab.name} (${keys[idx]})`}
+              tabIndex={-1}
+            >
+              <span className="key" aria-hidden="true">
+                {keys[idx]}
+              </span>
+              <span className="icon" aria-hidden="true">
+                {icons[idx]}
+              </span>
+              <div
+                className="cooldown-overlay"
+                style={{ height: `${cdPercent}%` }}
+                aria-hidden="true"
+              ></div>
             </div>
           );
         })}
@@ -452,8 +706,12 @@ export default function App() {
 
       {/* WAVE ANNOUNCEMENT OVERLAY */}
       <div className="wave-announce" id="wave-announce" role="alert" aria-live="assertive">
-        <div className="wave-num" id="wave-num">WAVE 1</div>
-        <div className="wave-desc" id="wave-desc">THE SWARM AWAKENS</div>
+        <div className="wave-num" id="wave-num">
+          WAVE 1
+        </div>
+        <div className="wave-desc" id="wave-desc">
+          THE SWARM AWAKENS
+        </div>
       </div>
 
       <div className="damage-vignette" id="damage-vignette" aria-hidden="true"></div>
@@ -462,40 +720,93 @@ export default function App() {
       <div id="synergy-bar" role="region" aria-label="Active synergies" aria-live="polite"></div>
 
       {/* THREAT METER */}
-      <div id="threat-meter" role="status" aria-label="Threat level indicator" style={{ display: gameState === 'playing' ? 'flex' : 'none' }}>
+      <div
+        id="threat-meter"
+        role="status"
+        aria-label="Threat level indicator"
+        style={{ display: gameState === 'playing' ? 'flex' : 'none' }}
+      >
         <div className="threat-label">THREAT LEVEL</div>
-        <div className="threat-bar-wrap" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={0}>
+        <div
+          className="threat-bar-wrap"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={0}
+        >
           <div className="threat-fill" id="threat-fill" style={{ width: '0%' }}></div>
         </div>
-        <div className="threat-label-val" id="threat-val" aria-live="polite">CALM</div>
+        <div className="threat-label-val" id="threat-val" aria-live="polite">
+          CALM
+        </div>
       </div>
 
       {/* Auto-attack mode indicator */}
-      <div id="auto-indicator" aria-live="polite" aria-label="Auto-attack status" style={{ display: gameState === 'playing' ? 'block' : 'none' }}>[ TAB ] AUTO: {autoAttack ? 'ON' : 'OFF'}</div>
+      <div
+        id="auto-indicator"
+        aria-live="polite"
+        aria-label="Auto-attack status"
+        style={{ display: gameState === 'playing' ? 'block' : 'none' }}
+      >
+        [ TAB ] AUTO: {autoAttack ? 'ON' : 'OFF'}
+      </div>
 
       {/* Daily seed badge */}
-      <div id="daily-badge" aria-label="Daily seed run indicator" style={{ display: gameState === 'playing' ? 'block' : 'none' }}>
+      <div
+        id="daily-badge"
+        aria-label="Daily seed run indicator"
+        style={{ display: gameState === 'playing' ? 'block' : 'none' }}
+      >
         <div className="daily-inner">
-          <span className="daily-icon" aria-hidden="true">👑</span>
-          <span className="daily-label" id="daily-label">DAILY SEED</span>
+          <span className="daily-icon" aria-hidden="true">
+            👑
+          </span>
+          <span className="daily-label" id="daily-label">
+            DAILY SEED
+          </span>
         </div>
       </div>
 
       {/* RUN JOURNAL */}
-      <button id="journal-btn" aria-expanded="false" aria-controls="journal-panel" aria-label="Toggle hive journal" style={{ display: gameState === 'playing' ? 'block' : 'none' }}>📖 HIVE LOG</button>
+      <button
+        id="journal-btn"
+        aria-expanded="false"
+        aria-controls="journal-panel"
+        aria-label="Toggle hive journal"
+        style={{ display: gameState === 'playing' ? 'block' : 'none' }}
+      >
+        📖 HIVE LOG
+      </button>
       <div id="journal-panel" role="region" aria-label="Hive journal panel" aria-hidden="true">
         <div className="jp-title">⬡ HIVE JOURNAL</div>
         <div id="journal-content"></div>
       </div>
 
       {/* UPGRADE SCREEN */}
-      <div id="upgrade-screen" className={gameState === 'upgrading' ? 'show' : ''} role="dialog" aria-modal="true" aria-label="Upgrade selection screen">
+      <div
+        id="upgrade-screen"
+        className={gameState === 'upgrading' ? 'show' : ''}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Upgrade selection screen"
+      >
         <div className="upgrade-header">EVOLVE</div>
         <div className="upgrade-subheader">CHOOSE AN ADAPTATION</div>
-        <div className="upgrade-points" id="upgrade-points" aria-live="polite" aria-label="Available upgrade points">{upgradePoints} PTS</div>
+        <div
+          className="upgrade-points"
+          id="upgrade-points"
+          aria-live="polite"
+          aria-label="Available upgrade points"
+        >
+          {upgradePoints} PTS
+        </div>
         <div className="upgrade-grid" id="upgrade-grid" role="list" aria-label="Available upgrades">
           {availableUpgrades.map((upg, i) => (
-            <div key={i} className={`upgrade-card rarity-${upg.rarity}`} onClick={() => handleSelectUpgrade(upg)}>
+            <div
+              key={i}
+              className={`upgrade-card rarity-${upg.rarity}`}
+              onClick={() => handleSelectUpgrade(upg)}
+            >
               <div className="uc-icon">{upg.icon}</div>
               <div className="uc-content">
                 <div className="uc-name">{upg.name}</div>
@@ -505,34 +816,88 @@ export default function App() {
           ))}
         </div>
         <div className="upgrade-actions">
-          <button className="reroll-btn" id="reroll-btn" aria-label="Reroll upgrade options" onClick={rollUpgrades}>
-            <span className="reroll-spin" aria-hidden="true">⟳</span> REROLL
+          <button
+            className="reroll-btn"
+            id="reroll-btn"
+            aria-label="Reroll upgrade options"
+            onClick={rollUpgrades}
+          >
+            <span className="reroll-spin" aria-hidden="true">
+              ⟳
+            </span>{' '}
+            REROLL
             <span id="reroll-cost">50</span> PTS
           </button>
-          <button id="codex-toggle" aria-expanded="false" aria-controls="codex-panel" aria-label="Toggle synergy codex">
-            ✦ SYNERGY CODEX <span className="codex-badge" id="codex-badge">0 / 8</span>
+          <button
+            id="codex-toggle"
+            aria-expanded="false"
+            aria-controls="codex-panel"
+            aria-label="Toggle synergy codex"
+          >
+            ✦ SYNERGY CODEX{' '}
+            <span className="codex-badge" id="codex-badge">
+              0 / 8
+            </span>
           </button>
           <div id="codex-panel" role="region" aria-label="Synergy codex" aria-hidden="true">
             <div className="codex-inner">
               <div className="codex-title">⬡ HIVE KNOWLEDGE</div>
-              <div className="codex-grid" id="codex-grid" role="list" aria-label="Known synergies"></div>
+              <div
+                className="codex-grid"
+                id="codex-grid"
+                role="list"
+                aria-label="Known synergies"
+              ></div>
             </div>
           </div>
-          <button className="upgrade-continue" id="upgrade-continue" aria-label="Continue to next wave" onClick={() => { setGameState('playing'); resumeGame(); }}>CONTINUE</button>
+          <button
+            className="upgrade-continue"
+            id="upgrade-continue"
+            aria-label="Continue to next wave"
+            onClick={() => {
+              setGameState('playing');
+              resumeGame();
+            }}
+          >
+            CONTINUE
+          </button>
         </div>
       </div>
 
       <div className="perf" id="perf" aria-hidden="true" role="status"></div>
 
       {/* ACCESSIBILITY */}
-      <button id="accessibility-btn" aria-haspopup="true" aria-expanded="false" aria-controls="colorblind-panel" aria-label="Accessibility options">♿ A11Y</button>
-      <div id="colorblind-panel" role="dialog" aria-label="Accessibility options panel" aria-hidden="true">
+      <button
+        id="accessibility-btn"
+        aria-haspopup="true"
+        aria-expanded="false"
+        aria-controls="colorblind-panel"
+        aria-label="Accessibility options"
+      >
+        ♿ A11Y
+      </button>
+      <div
+        id="colorblind-panel"
+        role="dialog"
+        aria-label="Accessibility options panel"
+        aria-hidden="true"
+      >
         <div className="cb-title">DISPLAY MODE</div>
-        <label className="cb-option"><input type="radio" name="cb" value="normal" defaultChecked /> Normal</label>
-        <label className="cb-option"><input type="radio" name="cb" value="protanopia" /> Protanopia</label>
-        <label className="cb-option"><input type="radio" name="cb" value="deuteranopia" /> Deuteranopia</label>
-        <label className="cb-option"><input type="radio" name="cb" value="tritanopia" /> Tritanopia</label>
-        <label className="cb-option"><input type="radio" name="cb" value="high-contrast" /> High Contrast</label>
+        <label className="cb-option">
+          <input type="radio" name="cb" value="normal" defaultChecked /> Normal
+        </label>
+        <label className="cb-option">
+          <input type="radio" name="cb" value="protanopia" /> Protanopia
+        </label>
+        <label className="cb-option">
+          <input type="radio" name="cb" value="deuteranopia" /> Deuteranopia
+        </label>
+        <label className="cb-option">
+          <input type="radio" name="cb" value="tritanopia" /> Tritanopia
+        </label>
+        <label className="cb-option">
+          <input type="radio" name="cb" value="high-contrast" /> High Contrast
+        </label>
       </div>
 
       {/* MOBILE TOUCH CONTROLS */}
@@ -540,18 +905,35 @@ export default function App() {
       <div id="joystick-base" aria-hidden="true"></div>
       <div id="joystick-thumb" aria-hidden="true"></div>
       <div id="touch-fire-zone" aria-hidden="true" role="presentation"></div>
-      <div id="touch-fire-btn" aria-label="Fire" role="button" aria-hidden="true">🔥</div>
-      <div id="touch-ability-bar" aria-hidden="true" role="toolbar" aria-label="Touch ability buttons">
-        <div className="touch-ab-btn" data-ab="0" aria-label="Ability Q">🔥<div className="t-cd" style={{ height: '0%' }}></div></div>
-        <div className="touch-ab-btn" data-ab="2" aria-label="Ability E">🛡️<div className="t-cd" style={{ height: '0%' }}></div></div>
-        <div className="touch-ab-btn" data-ab="3" aria-label="Ability R">💀<div className="t-cd" style={{ height: '0%' }}></div></div>
+      <div id="touch-fire-btn" aria-label="Fire" role="button" aria-hidden="true">
+        🔥
+      </div>
+      <div
+        id="touch-ability-bar"
+        aria-hidden="true"
+        role="toolbar"
+        aria-label="Touch ability buttons"
+      >
+        <div className="touch-ab-btn" data-ab="0" aria-label="Ability Q">
+          🔥<div className="t-cd" style={{ height: '0%' }}></div>
+        </div>
+        <div className="touch-ab-btn" data-ab="2" aria-label="Ability E">
+          🛡️<div className="t-cd" style={{ height: '0%' }}></div>
+        </div>
+        <div className="touch-ab-btn" data-ab="3" aria-label="Ability R">
+          💀<div className="t-cd" style={{ height: '0%' }}></div>
+        </div>
       </div>
 
       {/* MINIMAP */}
-      <div className={`minimap ${gameState === 'playing' ? 'active' : ''}`} id="minimap" role="img" aria-label="Mini-map showing enemy positions">
+      <div
+        className={`minimap ${gameState === 'playing' ? 'active' : ''}`}
+        id="minimap"
+        role="img"
+        aria-label="Mini-map showing enemy positions"
+      >
         <canvas id="minimap-canvas" ref={minimapRef} width="140" height="140"></canvas>
       </div>
-
     </>
   );
 }

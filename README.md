@@ -2,9 +2,9 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# BugSmasher - Enterprise-Grade AAA Game Edition
+# Hope Theory - Adaptive AAA Game Edition
 
-An advanced, production-ready tower-defense/survivor game with enterprise-grade features, robust authentication, and comprehensive analytics. Built with React, Firebase, and modern game development patterns.
+Hope Theory is a browser-based adaptive survival game with enterprise-grade features, robust authentication, and modern analytics. Built with React, Firebase, and contemporary game systems.
 
 ## Features
 

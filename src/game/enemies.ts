@@ -246,5 +246,17 @@ export const ENEMY_TYPES: Record<string, EnemyType> = {
 export let enemies: Enemy[] = [];
 
 export function setEnemies(newEnemies: Enemy[]) {
-  enemies = newEnemies;
+  enemies.length = 0;
+  enemies.push(...newEnemies);
+}
+
+export function clearEnemies() {
+  enemies.length = 0;
+}
+
+export function removeEnemiesById(ids: string[]) {
+  const idSet = new Set(ids);
+  const remaining = enemies.filter((e) => !idSet.has(e.id));
+  enemies.length = 0;
+  enemies.push(...remaining);
 }

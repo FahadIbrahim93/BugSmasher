@@ -1,10 +1,31 @@
 import { initAudio, playTone, sfxAttack, sfxKill, sfxHit, sfxAbility } from './audio';
-import { player, HERO_CLASSES } from './player';
-import { enemies, ENEMY_TYPES, setEnemies } from './enemies';
+import { player, HERO_CLASSES, HeroClass } from './player';
+import {
+  enemies,
+  ENEMY_TYPES,
+  setEnemies,
+  clearEnemies,
+  removeEnemiesById,
+  Enemy,
+  EnemyType,
+} from './enemies';
 import { particles, spawnParticles } from './particles';
 import { InsectRenderer } from './renderer';
 import { UPGRADE_DEFS, RARITY, SYNERGY_DEFS } from './upgrades';
-import { WORLD_SIZE, TAU, lerp, clamp, dist, angle, rand, randInt, seededRand, hsl, rgb } from './utils';
+import { GAME_CONFIG, ENEMY_SPAWN_WAVES, ENEMY_SPAWN_CHANCE, WAVE_DIFFICULTY } from './config';
+import {
+  WORLD_SIZE,
+  TAU,
+  lerp,
+  clamp,
+  dist,
+  angle,
+  rand,
+  randInt,
+  seededRand,
+  hsl,
+  rgb,
+} from './utils';
 import {
   damageNumbers,
   screenShake,
@@ -14,7 +35,7 @@ import {
   updateDamageNumbers,
   drawDamageNumbers,
   triggerCombatEffect,
-  updateCombatEffects
+  updateCombatEffects,
 } from './feedback';
 
 // Game State
@@ -51,12 +72,12 @@ export function getPlayerState() {
     maxXp: player.maxXp,
     level: player.level,
     upgradePoints: 0, // Placeholder for now
-    abilities: player.abilities
+    abilities: player.abilities,
   };
 }
 
 export function initGame(
-  canvas: HTMLCanvasElement, 
+  canvas: HTMLCanvasElement,
   minimap: HTMLCanvasElement,
   onGameOverCb: (score: number, wave: number) => void,
   onScoreUpdateCb: (score: number) => void,
@@ -81,14 +102,14 @@ export function initGame(
   resize();
 
   // Input Listeners
-  window.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
-  window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+  window.addEventListener('keydown', (e) => (keys[e.key.toLowerCase()] = true));
+  window.addEventListener('keyup', (e) => (keys[e.key.toLowerCase()] = false));
   canvas.addEventListener('mousemove', (e) => {
     mouseX = e.clientX;
     mouseY = e.clientY;
   });
-  canvas.addEventListener('mousedown', () => isMouseDown = true);
-  canvas.addEventListener('mouseup', () => isMouseDown = false);
+  canvas.addEventListener('mousedown', () => (isMouseDown = true));
+  canvas.addEventListener('mouseup', () => (isMouseDown = false));
 
   // Start Loop
   requestAnimationFrame(gameLoop);
@@ -104,7 +125,31 @@ export function startGame(heroClass: any) {
   projectiles = [];
   gems = [];
   damageNumbers.length = 0;
-  
+
+  // Spawn a few initial enemies immediately
+  const initialSpawnCount = 4;
+  const initialEnemies = [];
+  for (let i = 0; i < initialSpawnCount; i++) {
+    const spawnAngle = Math.random() * TAU;
+    const spawnDist = Math.max(canvasWidth, canvasHeight) / 2 + 100;
+    initialEnemies.push({
+      x: player.x + Math.cos(spawnAngle) * spawnDist,
+      y: player.y + Math.sin(spawnAngle) * spawnDist,
+      hp: ENEMY_TYPES.beetle.health,
+      maxHp: ENEMY_TYPES.beetle.health,
+      type: ENEMY_TYPES.beetle,
+      vx: 0,
+      vy: 0,
+      chargeVx: 0,
+      chargeVy: 0,
+      animPhase: Math.random() * TAU,
+      state: 'chase',
+      stateTimer: 0,
+      id: Math.random().toString(),
+    });
+  }
+  setEnemies(initialEnemies);
+
   // Reset Player
   player.x = WORLD_SIZE / 2;
   player.y = WORLD_SIZE / 2;
@@ -121,7 +166,7 @@ export function startGame(heroClass: any) {
   player.maxXp = 100;
   player.level = 1;
   player.attackCooldown = 0;
-  
+
   initAudio();
 }
 
@@ -148,9 +193,41 @@ export function setAutoAttack(val: boolean) {
   isAutoAttack = val;
 }
 
+export function setMovementInput(x: number, y: number) {
+  if (x !== 0 || y !== 0) {
+    keys['w'] = y < 0;
+    keys['s'] = y > 0;
+    keys['a'] = x < 0;
+    keys['d'] = x > 0;
+  } else {
+    keys['w'] = false;
+    keys['s'] = false;
+    keys['a'] = false;
+    keys['d'] = false;
+  }
+}
+
+export function setFireInput(firing: boolean) {
+  isMouseDown = firing;
+}
+
+export function setAimPosition(x: number, y: number) {
+  mouseX = x;
+  mouseY = y;
+}
+
+export function triggerAbility(key: string) {
+  if (keys[key] === undefined || keys[key] === false) {
+    keys[key] = true;
+    setTimeout(() => {
+      keys[key] = false;
+    }, 100);
+  }
+}
+
 function update(dt: number) {
   gameTime += dt;
-  
+
   // Basic Player Movement
   let dx = 0;
   let dy = 0;
@@ -171,17 +248,26 @@ function update(dt: number) {
   player.attackCooldown -= dt;
   if ((isMouseDown || isAutoAttack) && player.attackCooldown <= 0) {
     player.attackCooldown = player.attackRate;
-    let targetAngle = angle(player.x, player.y, mouseX + player.x - canvasWidth/2, mouseY + player.y - canvasHeight/2);
-    
+    let targetAngle = angle(
+      player.x,
+      player.y,
+      mouseX + player.x - canvasWidth / 2,
+      mouseY + player.y - canvasHeight / 2
+    );
+
     // Auto-attack logic
     if (isAutoAttack && enemies.length > 0) {
-      const target = enemies.reduce((prev, curr) => dist(player.x, player.y, prev.x, prev.y) < dist(player.x, player.y, curr.x, curr.y) ? prev : curr);
+      const target = enemies.reduce((prev, curr) =>
+        dist(player.x, player.y, prev.x, prev.y) < dist(player.x, player.y, curr.x, curr.y)
+          ? prev
+          : curr
+      );
       targetAngle = angle(player.x, player.y, target.x, target.y);
     }
-    
+
     // Simple melee/ranged attack logic
     sfxAttack();
-    
+
     if (player.heroClass.id === 'wasp' || player.heroClass.id === 'moth') {
       // Ranged attack
       projectiles.push({
@@ -193,13 +279,24 @@ function update(dt: number) {
         life: 2,
         size: 4,
         color: player.heroClass.color,
-        pierce: false
+        pierce: false,
       });
-      spawnParticles(player.x + Math.cos(targetAngle) * 20, player.y + Math.sin(targetAngle) * 20, 5, { color: player.heroClass.color, speed: 2, life: 0.2 });
+      spawnParticles(
+        player.x + Math.cos(targetAngle) * 20,
+        player.y + Math.sin(targetAngle) * 20,
+        5,
+        { color: player.heroClass.color, speed: 2, life: 0.2 }
+      );
     } else {
       // Melee attack
-      spawnParticles(player.x + Math.cos(targetAngle) * 20, player.y + Math.sin(targetAngle) * 20, 5, { color: '#fff', speed: 2, life: 0.2 });
-      
+      spawnParticles(
+        player.x + Math.cos(targetAngle) * 20,
+        player.y + Math.sin(targetAngle) * 20,
+        5,
+        { color: '#fff', speed: 2, life: 0.2 }
+      );
+
+      const deadEnemyIds: string[] = [];
       for (let i = enemies.length - 1; i >= 0; i--) {
         const e = enemies[i];
         const d = dist(player.x, player.y, e.x, e.y);
@@ -208,14 +305,15 @@ function update(dt: number) {
           const angleToEnemy = angle(player.x, player.y, e.x, e.y);
           let angleDiff = Math.abs(targetAngle - angleToEnemy);
           if (angleDiff > Math.PI) angleDiff = TAU - angleDiff;
-          
-          if (angleDiff < Math.PI / 4) { // 90 degree cone
+
+          if (angleDiff < Math.PI / 4) {
+            // 90 degree cone
             e.hp -= player.attackDamage;
             sfxHit();
             spawnParticles(e.x, e.y, 10, { color: e.type.color, speed: 3 });
             spawnDamageNumber(e.x, e.y, Math.floor(player.attackDamage), { color: '#ff6666' });
             triggerCombatEffect('hit', e.x, e.y);
-            
+
             if (e.hp <= 0) {
               sfxKill();
               score += e.type.score;
@@ -223,14 +321,14 @@ function update(dt: number) {
               enemiesKilled++;
               spawnParticles(e.x, e.y, 20, { color: e.type.color, speed: 5 });
               triggerCombatEffect('kill', e.x, e.y, { enemyType: e.type.id });
-              
-              // Drop Gem
               gems.push({ x: e.x, y: e.y, xp: e.type.score, color: e.type.gemColor });
-              
-              enemies.splice(i, 1);
+              deadEnemyIds.push(e.id);
             }
           }
         }
+      }
+      if (deadEnemyIds.length > 0) {
+        removeEnemiesById(deadEnemyIds);
       }
     }
   }
@@ -264,10 +362,23 @@ function update(dt: number) {
       player.abilities[1].cooldown = player.abilities[1].maxCooldown;
       spawnParticles(player.x, player.y, 20, { color: '#ff0', speed: 8, life: 0.5 });
       if (enemies.length > 0) {
-        const target = enemies.reduce((prev, curr) => dist(player.x, player.y, prev.x, prev.y) < dist(player.x, player.y, curr.x, curr.y) ? prev : curr);
+        const target = enemies.reduce((prev, curr) =>
+          dist(player.x, player.y, prev.x, prev.y) < dist(player.x, player.y, curr.x, curr.y)
+            ? prev
+            : curr
+        );
         if (dist(player.x, player.y, target.x, target.y) < 300) {
           target.hp -= 100;
-          damageNumbers.push({ x: target.x, y: target.y, value: 100, color: '#ff6666', life: 1, maxLife: 1, isCrit: false, isHeal: false });
+          damageNumbers.push({
+            x: target.x,
+            y: target.y,
+            value: 100,
+            color: '#ff6666',
+            life: 1,
+            maxLife: 1,
+            isCrit: false,
+            isHeal: false,
+          });
           // Draw lightning bolt (handled in draw loop ideally, but this is a quick hack)
           ctx!.strokeStyle = '#ff0';
           ctx!.lineWidth = 3;
@@ -298,7 +409,16 @@ function update(dt: number) {
     for (const e of enemies) {
       if (dist(player.x, player.y, e.x, e.y) < 200) {
         e.hp -= 80;
-        damageNumbers.push({ x: e.x, y: e.y, value: 80, color: '#ff6666', life: 1, maxLife: 1, isCrit: false, isHeal: false });
+        damageNumbers.push({
+          x: e.x,
+          y: e.y,
+          value: 80,
+          color: '#ff6666',
+          life: 1,
+          maxLife: 1,
+          isCrit: false,
+          isHeal: false,
+        });
       }
     }
     keys['r'] = false;
@@ -308,7 +428,7 @@ function update(dt: number) {
   if (Math.random() < 0.05 * wave && enemies.length < 50 + wave * 10) {
     const spawnAngle = Math.random() * TAU;
     const spawnDist = Math.max(canvasWidth, canvasHeight) / 2 + 100;
-    
+
     // Choose enemy type based on wave (scaled difficulty)
     let type = ENEMY_TYPES.beetle;
     if (wave > 2 && Math.random() < 0.3) type = ENEMY_TYPES.wasp;
@@ -316,7 +436,7 @@ function update(dt: number) {
     if (wave > 6 && Math.random() < 0.15) type = ENEMY_TYPES.soldier;
     if (wave > 8 && Math.random() < 0.15) type = ENEMY_TYPES.spitter;
     if (wave > 10 && Math.random() < 0.1) type = ENEMY_TYPES.tank;
-    
+
     enemies.push({
       x: player.x + Math.cos(spawnAngle) * spawnDist,
       y: player.y + Math.sin(spawnAngle) * spawnDist,
@@ -330,7 +450,7 @@ function update(dt: number) {
       animPhase: Math.random() * TAU,
       state: 'chase',
       stateTimer: 0,
-      id: Math.random().toString()
+      id: Math.random().toString(),
     });
   }
 
@@ -357,12 +477,13 @@ function update(dt: number) {
         animPhase: Math.random() * TAU,
         state: 'chase',
         stateTimer: 0,
-        id: Math.random().toString()
+        id: Math.random().toString(),
       });
     }
   }
 
-  // Update Enemies
+  // Update Enemies - use filter for removal
+  const deadEnemies: string[] = [];
   for (let i = enemies.length - 1; i >= 0; i--) {
     const e = enemies[i];
     const d = dist(e.x, e.y, player.x, player.y);
@@ -375,8 +496,7 @@ function update(dt: number) {
         e.x += Math.cos(a) * e.type.speed * dt;
         e.y += Math.sin(a) * e.type.speed * dt;
       } else if (e.stateTimer <= 0) {
-        // Ranged attack
-        e.stateTimer = 2; // Cooldown
+        e.stateTimer = 2;
         projectiles.push({
           x: e.x,
           y: e.y,
@@ -387,11 +507,10 @@ function update(dt: number) {
           size: 4,
           color: e.type.color,
           pierce: false,
-          isEnemy: true
+          isEnemy: true,
         });
       }
     } else {
-      // Melee chase
       e.x += Math.cos(a) * e.type.speed * dt;
       e.y += Math.sin(a) * e.type.speed * dt;
     }
@@ -403,6 +522,15 @@ function update(dt: number) {
         onGameOver(score, wave);
       }
     }
+
+    if (e.hp <= 0) {
+      deadEnemies.push(e.id);
+    }
+  }
+
+  // Remove dead enemies in single pass
+  if (deadEnemies.length > 0) {
+    setEnemies(enemies.filter((e) => !deadEnemies.includes(e.id)));
   }
 
   // Update Projectiles
@@ -411,7 +539,7 @@ function update(dt: number) {
     p.x += Math.cos(p.angle) * p.speed * dt;
     p.y += Math.sin(p.angle) * p.speed * dt;
     p.life -= dt;
-    
+
     let hit = false;
 
     if (p.isEnemy) {
@@ -420,7 +548,16 @@ function update(dt: number) {
         player.hp -= p.damage;
         sfxHit();
         spawnParticles(player.x, player.y, 5, { color: p.color, speed: 2 });
-        damageNumbers.push({ x: player.x, y: player.y, value: Math.floor(p.damage), color: '#ff6666', life: 1, maxLife: 1, isCrit: false, isHeal: false });
+        damageNumbers.push({
+          x: player.x,
+          y: player.y,
+          value: Math.floor(p.damage),
+          color: '#ff6666',
+          life: 1,
+          maxLife: 1,
+          isCrit: false,
+          isHeal: false,
+        });
         hit = true;
         if (player.hp <= 0) {
           isPlaying = false;
@@ -429,14 +566,24 @@ function update(dt: number) {
       }
     } else {
       // Check collision with enemies
+      const deadEnemyIds: string[] = [];
       for (let j = enemies.length - 1; j >= 0; j--) {
         const e = enemies[j];
         if (dist(p.x, p.y, e.x, e.y) < e.type.size + p.size) {
           e.hp -= p.damage;
           sfxHit();
           spawnParticles(e.x, e.y, 5, { color: e.type.color, speed: 2 });
-          damageNumbers.push({ x: e.x, y: e.y, value: Math.floor(p.damage), color: '#ff6666', life: 1, maxLife: 1, isCrit: false, isHeal: false });
-          
+          damageNumbers.push({
+            x: e.x,
+            y: e.y,
+            value: Math.floor(p.damage),
+            color: '#ff6666',
+            life: 1,
+            maxLife: 1,
+            isCrit: false,
+            isHeal: false,
+          });
+
           if (e.hp <= 0) {
             sfxKill();
             score += e.type.score;
@@ -444,32 +591,36 @@ function update(dt: number) {
             enemiesKilled++;
             spawnParticles(e.x, e.y, 20, { color: e.type.color, speed: 5 });
             gems.push({ x: e.x, y: e.y, xp: e.type.score, color: e.type.gemColor });
-            enemies.splice(j, 1);
+            deadEnemyIds.push(e.id);
           }
           hit = true;
           if (!p.pierce) break;
         }
       }
+      if (deadEnemyIds.length > 0) {
+        removeEnemiesById(deadEnemyIds);
+      }
     }
-    
-    if (hit && !p.pierce) {
-      projectiles.splice(i, 1);
-    } else if (p.life <= 0) {
-      projectiles.splice(i, 1);
-    }
+
+    // Projectile removal handled by filter below
   }
 
+  // Remove dead projectiles
+  projectiles = projectiles.filter((p) => p.life > 0);
+
   // Update Gems
+  const pickedGemIndices: number[] = [];
   for (let i = gems.length - 1; i >= 0; i--) {
     const g = gems[i];
     const d = dist(g.x, g.y, player.x, player.y);
-    if (d < 100) { // Pickup radius
+    if (d < 100) {
+      // Pickup radius
       const a = angle(g.x, g.y, player.x, player.y);
       g.x += Math.cos(a) * 400 * dt;
       g.y += Math.sin(a) * 400 * dt;
       if (d < 20) {
         player.xp += g.xp;
-        gems.splice(i, 1);
+        pickedGemIndices.push(i);
         if (player.xp >= player.maxXp) {
           player.level++;
           player.xp -= player.maxXp;
@@ -480,13 +631,15 @@ function update(dt: number) {
       }
     }
   }
-
-  // Update Particles
-  for (let i = particles.length - 1; i >= 0; i--) {
-    if (!particles[i].update(dt, gameTime)) {
-      particles.splice(i, 1);
-    }
+  // Remove picked gems
+  if (pickedGemIndices.length > 0) {
+    gems = gems.filter((_, idx) => !pickedGemIndices.includes(idx));
   }
+
+  // Update Particles - use filter
+  const liveParticles = particles.filter((p) => p.update(dt, gameTime));
+  particles.length = 0;
+  particles.push(...liveParticles);
 
   // Update Damage Numbers
   updateDamageNumbers(dt);
@@ -517,7 +670,7 @@ function draw(ctx: CanvasRenderingContext2D) {
   const gridSize = 100;
   const startX = Math.floor(camX / gridSize) * gridSize;
   const startY = Math.floor(camY / gridSize) * gridSize;
-  
+
   ctx.beginPath();
   for (let x = startX; x < startX + canvasWidth + gridSize; x += gridSize) {
     ctx.moveTo(x, camY);
@@ -543,7 +696,17 @@ function draw(ctx: CanvasRenderingContext2D) {
 
   // Draw Enemies
   for (const e of enemies) {
-    InsectRenderer.drawBeetle(ctx, e.x, e.y, e.type.size, angle(e.x, e.y, player.x, player.y), e.animPhase, e.hp, e.maxHp, e.type.rendType);
+    InsectRenderer.drawBeetle(
+      ctx,
+      e.x,
+      e.y,
+      e.type.size,
+      angle(e.x, e.y, player.x, player.y),
+      e.animPhase,
+      e.hp,
+      e.maxHp,
+      e.type.rendType
+    );
   }
 
   // Draw Projectiles
@@ -566,29 +729,49 @@ function draw(ctx: CanvasRenderingContext2D) {
   // Draw Player
   let playerAngle = angle(player.x, player.y, mouseX + camX, mouseY + camY);
   if (isAutoAttack && enemies.length > 0) {
-    const target = enemies.reduce((prev, curr) => dist(player.x, player.y, prev.x, prev.y) < dist(player.x, player.y, curr.x, curr.y) ? prev : curr);
+    const target = enemies.reduce((prev, curr) =>
+      dist(player.x, player.y, prev.x, prev.y) < dist(player.x, player.y, curr.x, curr.y)
+        ? prev
+        : curr
+    );
     playerAngle = angle(player.x, player.y, target.x, target.y);
   }
-  InsectRenderer.drawBeetle(ctx, player.x, player.y, 15, playerAngle, gameTime * 10, player.hp, player.maxHp, 'basic');
+  InsectRenderer.drawBeetle(
+    ctx,
+    player.x,
+    player.y,
+    15,
+    playerAngle,
+    gameTime * 10,
+    player.hp,
+    player.maxHp,
+    'basic'
+  );
 
   ctx.restore();
 
   // Draw enhanced damage numbers (world space, not affected by camera transform)
-  drawDamageNumbers(ctx, camX - screenShake.offsetX, camY - screenShake.offsetY, canvasWidth, canvasHeight);
+  drawDamageNumbers(
+    ctx,
+    camX - screenShake.offsetX,
+    camY - screenShake.offsetY,
+    canvasWidth,
+    canvasHeight
+  );
 
   // Draw Minimap
   if (minimapCtx) {
     minimapCtx.fillStyle = '#111';
     minimapCtx.fillRect(0, 0, 140, 140);
-    
+
     const scale = 140 / WORLD_SIZE;
-    
+
     // Draw enemies on minimap
     for (const e of enemies) {
       minimapCtx.fillStyle = e.type.color;
       minimapCtx.fillRect(e.x * scale, e.y * scale, 2, 2);
     }
-    
+
     // Draw player on minimap
     minimapCtx.fillStyle = '#fff';
     minimapCtx.fillRect(player.x * scale, player.y * scale, 3, 3);
