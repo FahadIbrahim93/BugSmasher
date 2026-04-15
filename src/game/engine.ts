@@ -748,6 +748,14 @@ function draw(ctx: CanvasRenderingContext2D) {
     'basic'
   );
 
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0, 255, 140, 0.75)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, 24, 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+
   ctx.restore();
 
   // Draw enhanced damage numbers (world space, not affected by camera transform)

@@ -599,6 +599,10 @@ export default function App() {
             gameState === 'playing' || gameState === 'gameover' || gameState === 'upgrading'
               ? 'block'
               : 'none',
+          position: 'fixed',
+          inset: 0,
+          zIndex: 1,
+          background: '#000',
         }}
       ></canvas>
 
